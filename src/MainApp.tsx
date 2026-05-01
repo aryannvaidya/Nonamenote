@@ -247,15 +247,12 @@ export default function MainApp() {
     }
 
     try {
-      const htmlContent = editorRef.current?.innerHTML || "";
+      const noteCard = document.getElementById('note-card');
+      const noteHTML = noteCard?.outerHTML || "";
+      
       const docRef = await db.collection("notes").add({
-        message: htmlContent,
+        noteHTML: noteHTML,
         theme_bg: selectedTheme.bgClass || "#0d0d0d",
-        header_bg: selectedTheme.paperClass || "#fdf5e6",
-        header_text_color: selectedTheme.accentColor || "#b89e7a",
-        accent_color: selectedTheme.accentColor || "#b89e7a",
-        font_family: selectedTheme.fontClass || "font-sans",
-        text_color: selectedTheme.fontClass.split(' ').find(c => c.startsWith('text-')) || 'text-gray-800',
         timestamp: new Date(),
         opened: false
       });
@@ -371,7 +368,7 @@ export default function MainApp() {
           </div>
 
           <AnimatePresence mode="wait">
-            <motion.div key={selectedTheme.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={`min-h-[420px] p-10 md:p-16 relative flex flex-col transition-all duration-1000 ${selectedTheme.paperClass} ${selectedTheme.fontClass}`}>
+            <motion.div id="note-card" key={selectedTheme.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={`min-h-[420px] p-10 md:p-16 relative flex flex-col transition-all duration-1000 ${selectedTheme.paperClass} ${selectedTheme.fontClass}`}>
               <div className="flex justify-between border-b border-current opacity-20 pb-2 mb-10">
                 <span className="font-telegraph text-[10px] uppercase italic">Dispatch No. {Math.floor(Math.random() * 999)}-X</span>
                 <span className="font-telegraph text-[10px] uppercase">Date: {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}</span>

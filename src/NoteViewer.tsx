@@ -165,34 +165,31 @@ export default function NoteViewer() {
         <AnimatePresence>
           {animationStage === 'revealed' && (
             <motion.div 
-              initial={{ opacity: 0, y: 40, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ duration: 0.8, ease: "easeOut" }}
-              className="relative z-10 w-full max-w-[560px] mx-6 pointer-events-auto"
+              className="fixed inset-0 z-10 w-full h-full flex items-center justify-center pointer-events-auto p-4 overflow-hidden"
+              id="viewer-container"
             >
-              <div 
-                className="w-full p-10 md:p-14 rounded-2xl shadow-2xl backdrop-blur-md flex flex-col items-start text-left"
-                style={{
-                  backgroundColor: 'rgba(255, 255, 255, 0.15)',
-                  color: viewingData?.text_color || '#fff',
-                  fontFamily: viewingData?.font_family
-                }}
-              >
-                <div className="w-full text-center mb-12 border-b border-current opacity-10 pb-8">
+              <div className="flex flex-col items-center gap-6 w-full max-w-4xl transition-transform duration-500 origin-center" style={{ transform: 'scale(var(--note-scale, 1))' }}>
+                <div className="w-full text-center opacity-40">
                   <p className="text-[10px] uppercase tracking-[0.4em] font-black">— A Note For You —</p>
                 </div>
 
                 <div 
-                  className="w-full text-xl md:text-2xl leading-relaxed whitespace-pre-wrap message-content"
-                  dangerouslySetInnerHTML={{ __html: viewingData?.message || "" }}
+                  className="w-full max-w-[600px] pointer-events-none shadow-2xl rounded-sm overflow-hidden"
+                  dangerouslySetInnerHTML={{ 
+                    __html: (viewingData?.noteHTML || "")
+                      .replace(/contenteditable="true"/g, 'contenteditable="false"')
+                      .replace(/id="note-card"/g, '') // remove id to avoid duplicates if necessary
+                  }}
                 />
 
-                <div className="w-full mt-14 pt-10 border-t border-current opacity-10 flex flex-col items-center gap-6">
-                  <p className="text-[9px] uppercase tracking-[0.3em] font-bold opacity-40">Sent anonymously via NoNameNote</p>
-                  
+                <div className="flex flex-col items-center gap-4 opacity-40">
+                  <p className="text-[8px] uppercase tracking-[0.3em] font-bold">Sent anonymously via NoNameNote</p>
                   <Link 
                     to="/"
-                    className="text-[10px] uppercase tracking-[0.4em] font-medium opacity-30 hover:opacity-100 transition-opacity flex items-center gap-2"
+                    className="text-[10px] uppercase tracking-[0.3em] font-medium hover:opacity-100 transition-opacity flex items-center gap-2"
                   >
                     Send your own note →
                   </Link>
@@ -204,14 +201,30 @@ export default function NoteViewer() {
       </div>
 
       <style dangerouslySetInnerHTML={{ __html: `
-        .message-content * {
-          text-align: inherit !important;
-          color: inherit !important;
+        :root {
+          --note-scale: 1;
         }
-        .message-content blockquote {
-          background: rgba(0,0,0,0.05);
-          margin-left: 0;
-          margin-right: 0;
+        @media (max-width: 640px) {
+          :root {
+            --note-scale: 0.85;
+          }
+        }
+        @media (max-width: 480px) {
+          :root {
+            --note-scale: 0.7;
+          }
+        }
+        @media (max-width: 380px) {
+          :root {
+            --note-scale: 0.6;
+          }
+        }
+        #viewer-container [contenteditable] {
+          outline: none !important;
+          cursor: default !important;
+        }
+        #viewer-container .highlighter {
+          border-radius: 2px;
         }
       `}} />
     </div>
