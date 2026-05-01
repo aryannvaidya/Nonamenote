@@ -49,11 +49,42 @@ export default function NoteViewer() {
     }
   };
 
+  const [replyText, setReplyText] = useState('');
+  const [isSendingReply, setIsSendingReply] = useState(false);
+  const [hasReplied, setHasReplied] = useState(false);
+
   useEffect(() => {
     if (id) {
       fetchNote(id);
+      const replied = JSON.parse(localStorage.getItem('repliedNotes') || '[]');
+      if (replied.includes(id)) {
+        setHasReplied(true);
+      }
     }
   }, [id]);
+
+  const submitReply = async () => {
+    if (!replyText.trim() || isSendingReply || hasReplied || !id) return;
+    
+    setIsSendingReply(true);
+    try {
+      await db.collection('notes').doc(id).collection('replies').add({
+        message: replyText,
+        timestamp: new Date(),
+        read: false
+      });
+      
+      const replied = JSON.parse(localStorage.getItem('repliedNotes') || '[]');
+      replied.push(id);
+      localStorage.setItem('repliedNotes', JSON.stringify(replied));
+      setHasReplied(true);
+      setReplyText('');
+    } catch (e) {
+      console.error("Failed to send reply", e);
+    } finally {
+      setIsSendingReply(false);
+    }
+  };
 
   const fetchNote = async (noteId: string) => {
     setIsNoteLoading(true);
@@ -84,7 +115,10 @@ export default function NoteViewer() {
     }, 3800);
 
     try {
-      await db.collection('notes').doc(id).update({ opened: true });
+      await db.collection('notes').doc(id).update({ 
+        opened: true,
+        openedAt: new Date()
+      });
     } catch (e) {
       console.error("Failed to update opened state", e);
     }
@@ -231,6 +265,49 @@ export default function NoteViewer() {
                       .replace(/id="note-card"/g, '') 
                   }}
                 />
+
+                {/* Reply Section */}
+                <div className="w-full max-w-[600px] flex flex-col items-center gap-6 mt-4">
+                  <div className="w-full h-[1px] bg-white/10" />
+                  
+                  {hasReplied ? (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-center py-4"
+                    >
+                      <p className="text-[#d4a843] text-[10px] tracking-[0.3em] font-black uppercase">
+                        Your reply has been sent anonymously ✓
+                      </p>
+                    </motion.div>
+                  ) : (
+                    <div className="w-full flex flex-col items-center gap-4">
+                      <div className="flex items-center gap-3 opacity-60">
+                        <span className="text-[9px] uppercase tracking-[0.5em] font-black text-white">💬 Send a reply anonymously</span>
+                      </div>
+                      
+                      <div className="w-full relative group">
+                        <textarea
+                          value={replyText}
+                          onChange={(e) => setReplyText(e.target.value.slice(0, 500))}
+                          placeholder="Type your response..."
+                          className="w-full bg-white/5 border border-white/10 rounded-sm p-4 text-sm text-white/80 placeholder:text-white/20 focus:outline-none focus:border-[#d4a843]/40 transition-all resize-none h-24"
+                        />
+                        <div className="absolute bottom-3 right-3 text-[8px] font-mono text-white/20 tracking-widest">
+                          {replyText.length}/500
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={submitReply}
+                        disabled={!replyText.trim() || isSendingReply}
+                        className="w-full py-4 bg-[#d4a843] text-black text-[10px] uppercase tracking-[0.3em] font-black hover:bg-[#f0ce80] disabled:opacity-20 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
+                      >
+                        {isSendingReply ? 'Dispatching...' : 'Send Reply'}
+                      </button>
+                    </div>
+                  )}
+                </div>
 
                 <div className="flex flex-col items-center gap-8 opacity-40">
                   <p className="text-[8px] uppercase tracking-[0.4em] font-bold">Sent via NoNameNote System</p>
