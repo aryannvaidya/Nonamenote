@@ -1,20 +1,28 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# NoNameNote 🕊️
 
-# Run and deploy your AI Studio app
+An anonymous note-sending web app with a telegraph aesthetic.
 
-This contains everything you need to run your app locally.
+Write a message, choose from 8 beautiful themes, and send 
+a unique link to anyone's email completely anonymously.
 
-View your app in AI Studio: https://ai.studio/apps/0dfb7dc8-b204-44e9-bec1-5c7b9497ac43
+## Features
+- 8 handcrafted themes (Telegraph, Ocean, Vintage, Terminal and more)
+- Rich text formatting
+- Anonymous link generation via Firebase
+- Beautiful email notification via EmailJS
+- Envelope opening animation on note reveal
+- Content moderation before sending
+- Mobile responsive PWA
 
-## Run Locally
+## Tech Stack
+- Vanilla HTML, CSS, JavaScript
+- Firebase Firestore
+- EmailJS
+- Vercel (hosting)
 
-**Prerequisites:**  Node.js
+## Live
+https://nonamenote.vercel.app
 
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Note
+This project is private. API keys are stored 
+as environment variables on Vercel.
