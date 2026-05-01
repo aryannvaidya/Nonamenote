@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, 
-  Send, Mail, CheckCircle2, AlertCircle, History, X,
+  Send, Mail, CheckCircle2, AlertCircle, History, X, Check,
   ChevronLeft, ChevronRight, Heading, Highlighter, Quote
 } from 'lucide-react';
 
@@ -35,6 +35,9 @@ export default function MainApp() {
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
   const [nextAvailableTime, setNextAvailableTime] = useState<string>('');
   const [showLogs, setShowLogs] = useState(false);
+  const [showRulesOverlay, setShowRulesOverlay] = useState(false);
+  const [agreedToRules, setAgreedToRules] = useState(false);
+  const [understoodResponsibility, setUnderstoodResponsibility] = useState(false);
   const [logs, setLogs] = useState<{ id: string; noteId?: string; recipient: string; content: string; timestamp: number; hasUnread?: boolean; replyCount?: number; opened?: boolean; openedAt?: number }[]>([]);
   const [activeLogThread, setActiveLogThread] = useState<string | null>(null);
   const [activeNoteData, setActiveNoteData] = useState<any>(null);
@@ -46,6 +49,10 @@ export default function MainApp() {
   const sendButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
+    const rulesAccepted = localStorage.getItem('rulesAccepted');
+    if (!rulesAccepted) {
+      setShowRulesOverlay(true);
+    }
     const savedLogs = localStorage.getItem('sentNotesLog');
     if (savedLogs) {
       try {
@@ -57,6 +64,11 @@ export default function MainApp() {
       }
     }
   }, []);
+
+  const handleAcceptRules = () => {
+    localStorage.setItem('rulesAccepted', 'true');
+    setShowRulesOverlay(false);
+  };
 
   const checkAllReplies = async (currentLogs: any[]) => {
     const updatedLogs = [...currentLogs];
@@ -872,6 +884,101 @@ export default function MainApp() {
           </div>
         </div>
       )}
+
+      {/* Responsibility Protocol Modal */}
+      <AnimatePresence>
+        {showRulesOverlay && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/95 backdrop-blur-xl"
+          >
+            <motion.div 
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 20, opacity: 0 }}
+              className="w-full max-w-md bg-[#1a1a1a] border border-[#b89e7a]/30 p-8 flex flex-col gap-6 relative shadow-[0_0_50px_rgba(184,158,122,0.1)]"
+            >
+              <div className="flex flex-col items-center gap-2 mb-2">
+                <div className="w-10 h-10 border border-[#b89e7a] flex items-center justify-center text-[#b89e7a] text-xl font-serif-elegant">N</div>
+                <h2 className="text-[#b89e7a] font-serif-elegant text-xl tracking-[0.2em] uppercase">Responsibility Protocol</h2>
+                <div className="h-px w-32 bg-gradient-to-r from-transparent via-[#b89e7a]/30 to-transparent" />
+              </div>
+
+              <div className="flex flex-col gap-4 text-[11px] text-white/70 leading-relaxed font-mono">
+                <div className="space-y-1">
+                  <p className="text-[#b89e7a]/60 font-black uppercase tracking-widest text-[9px] mb-2">Safety & Behavior</p>
+                  <p>• No <span className="text-[#b89e7a] font-bold underline decoration-[#b89e7a]/30 underline-offset-2">harassment</span>, bullying, or threats</p>
+                  <p>• No <span className="text-[#b89e7a] font-bold underline decoration-[#b89e7a]/30 underline-offset-2">hate speech</span> or targeting based on identity</p>
+                  <p>• No <span className="text-[#b89e7a] font-bold underline decoration-[#b89e7a]/30 underline-offset-2">sexually explicit</span> or inappropriate content</p>
+                  <p>• No encouragement of <span className="text-[#b89e7a] font-bold underline decoration-[#b89e7a]/30 underline-offset-2">self-harm</span> or violence</p>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-[#b89e7a]/60 font-black uppercase tracking-widest text-[9px] mb-2">Privacy & Misuse</p>
+                  <p>• Do not share <span className="text-[#b89e7a] font-bold underline decoration-[#b89e7a]/30 underline-offset-2">personal information</span> (yours or others’)</p>
+                  <p>• Do not <span className="text-[#b89e7a] font-bold underline decoration-[#b89e7a]/30 underline-offset-2">impersonate</span> someone else</p>
+                  <p>• Do not use this to <span className="text-[#b89e7a] font-bold underline decoration-[#b89e7a]/30 underline-offset-2">spam</span> or scam</p>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-[#b89e7a]/60 font-black uppercase tracking-widest text-[9px] mb-2">Accountability</p>
+                  <p>• Messages may be <span className="text-[#b89e7a] font-bold underline decoration-[#b89e7a]/30 underline-offset-2">filtered</span> for abuse prevention</p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 mt-4">
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <div className="mt-0.5 relative w-4 h-4 shrink-0">
+                    <input 
+                      type="checkbox" 
+                      checked={agreedToRules} 
+                      onChange={e => setAgreedToRules(e.target.checked)}
+                      className="peer appearance-none w-4 h-4 rounded-none bg-black border border-[#b89e7a]/50 checked:bg-[#b89e7a] focus:ring-0 transition-all cursor-pointer absolute inset-0"
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 peer-checked:opacity-100 pointer-events-none text-black">
+                      <Check size={10} strokeWidth={4} />
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-white/50 group-hover:text-white/80 transition-colors uppercase tracking-wider font-bold">
+                    I agree to use NoNameNote responsibly and follow the rules.
+                  </span>
+                </label>
+
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <div className="mt-0.5 relative w-4 h-4 shrink-0">
+                    <input 
+                      type="checkbox" 
+                      checked={understoodResponsibility} 
+                      onChange={e => setUnderstoodResponsibility(e.target.checked)}
+                      className="peer appearance-none w-4 h-4 rounded-none bg-black border border-[#b89e7a]/50 checked:bg-[#b89e7a] focus:ring-0 transition-all cursor-pointer absolute inset-0"
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 peer-checked:opacity-100 pointer-events-none text-black">
+                      <Check size={10} strokeWidth={4} />
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-white/50 group-hover:text-white/80 transition-colors uppercase tracking-wider font-bold">
+                    I understand this is anonymous, but I am responsible for what I send.
+                  </span>
+                </label>
+              </div>
+
+              <button 
+                onClick={handleAcceptRules}
+                disabled={!agreedToRules || !understoodResponsibility}
+                className={`mt-4 py-4 w-full font-black uppercase tracking-[0.3em] text-[10px] transition-all
+                  ${agreedToRules && understoodResponsibility 
+                    ? 'bg-[#b89e7a] text-black hover:bg-[#c9bda4] shadow-lg' 
+                    : 'bg-white/5 text-white/20 cursor-not-allowed'}
+                `}
+              >
+                Initialize App
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
