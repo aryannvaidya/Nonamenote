@@ -676,36 +676,44 @@ export default function MainApp() {
                               });
                             }
                           }}
-                          className={`group border-b border-white/5 pb-6 cursor-pointer hover:bg-white/[0.02] transition-colors -mx-2 px-2 rounded-sm ${log.hasUnread ? 'bg-red-500/[0.03]' : ''}`}
+                          className={`group border-b border-white/5 pb-4 pt-2 cursor-pointer hover:bg-white/[0.02] transition-colors -mx-2 px-2 rounded-sm ${log.hasUnread ? 'bg-red-500/[0.03]' : ''}`}
                         >
-                          <div className="flex justify-between items-center mb-2">
-                            <div className="flex items-center gap-3">
-                              <span className="text-[10px] font-black text-[#b89e7a] tracking-[0.2em] uppercase">{log.recipient}</span>
-                              {log.replyCount ? (
-                                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-white/5 rounded-full border border-white/5">
-                                  <span className="text-[9px] text-white/40">💬</span>
-                                  <span className="text-[9px] font-mono text-white/60">{log.replyCount}</span>
-                                  {log.hasUnread && <span className="w-1 h-1 bg-red-500 rounded-full animate-pulse" />}
-                                </div>
-                              ) : null}
-                            </div>
-                            <span className="text-[9px] text-white/20 font-mono italic">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-[10px] font-black text-[#b89e7a] tracking-wider break-all">{log.recipient}</span>
+                            <span className="text-[8px] text-white/20 font-mono flex-shrink-0">
                               {new Date(log.timestamp).toLocaleDateString()}
                             </span>
                           </div>
+                          
                           <div 
-                            className="text-[11px] leading-relaxed text-white/60 line-clamp-2 italic opacity-80 group-hover:opacity-100 transition-opacity"
-                            dangerouslySetInnerHTML={{ __html: log.content }}
+                            className="text-[11px] text-white/40 truncate italic pr-4 mb-2"
+                            dangerouslySetInnerHTML={{ 
+                              __html: log.content.replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi, '$1').replace(/<[^>]+>/g, ' ') 
+                            }}
                           />
-                          <div className="mt-3 flex items-center gap-2">
-                            <span className={`text-[8px] font-black tracking-[0.2em] uppercase px-1.5 py-0.5 rounded-xs ${log.opened ? 'bg-green-500/10 text-green-400' : 'bg-blue-500/10 text-blue-400'}`}>
-                              {log.opened ? 'Seen' : 'Delivered'}
-                            </span>
-                            {log.opened && log.openedAt && (
-                              <span className="text-[8px] text-white/20 font-mono italic">
-                                at {new Date(log.openedAt).toLocaleDateString()} {new Date(log.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[7px] font-black tracking-[0.2em] uppercase px-1.5 py-0.5 rounded-xs ${log.opened ? 'bg-green-500/10 text-green-400' : 'bg-blue-500/10 text-blue-400'}`}>
+                                {log.opened ? 'Seen' : 'Delivered'}
                               </span>
-                            )}
+                              {log.opened && log.openedAt && (
+                                <span className="text-[7px] text-white/20 font-mono italic">
+                                  {new Date(log.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              )}
+                            </div>
+                            
+                            {log.replyCount ? (
+                              <div className="flex items-center gap-2 px-2 py-0.5 bg-white/5 rounded-full border border-white/5">
+                                <div className="relative flex items-center">
+                                  <span className="text-[9px]">💬</span>
+                                  <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-green-500 rounded-full shadow-[0_0_4px_rgba(34,197,94,0.6)]" />
+                                </div>
+                                <span className="text-[8px] font-mono text-white/60">{log.replyCount}</span>
+                                {log.hasUnread && <span className="w-1 h-1 bg-red-500 rounded-full animate-pulse" title="Unread Response" />}
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                       ))}
