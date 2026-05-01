@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
-import { motion } from 'motion/react';
-import { Mail, Volume2, VolumeX } from 'lucide-react';
+import { useParams, Link } from 'react-router-dom';
+import { motion, AnimatePresence } from 'motion/react';
+import { Mail } from 'lucide-react';
 import { db } from './firebase';
 
 export default function NoteViewer() {
@@ -10,16 +10,7 @@ export default function NoteViewer() {
   const [isNoteLoading, setIsNoteLoading] = useState(true);
   const [status, setStatus] = useState<{ type: 'error' | null; message: string }>({ type: null, message: '' });
   
-  const [envelopeOpened, setEnvelopeOpened] = useState(false);
-  const [isCardSliding, setIsCardSliding] = useState(false);
-  const [isEnvelopeFading, setIsEnvelopeFading] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-
-  const openSoundRef = useRef<HTMLAudioElement | null>(null);
-
-  useEffect(() => {
-    openSoundRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3');
-  }, []);
+  const [animationStage, setAnimationStage] = useState<'idle' | 'opening' | 'sliding' | 'fading' | 'revealed'>('idle');
 
   useEffect(() => {
     if (id) {
@@ -46,26 +37,23 @@ export default function NoteViewer() {
   };
 
   const handleOpenEnvelope = async () => {
-    if (!viewingData || !id) return;
-    setEnvelopeOpened(true);
+    if (!viewingData || !id || animationStage !== 'idle') return;
     
-    if (!isMuted && openSoundRef.current) {
-      openSoundRef.current.play().catch(e => console.error("Audio playback failed", e));
-    }
-
-    // Animation sequence
-    // 0s: Flap starts opening (1.5s)
-    // 1.5s: Card starts sliding up (1s)
-    // 2.5s: Envelope starts fading away (0.5s)
-    // 3.0s: Show full note
+    setAnimationStage('opening');
     
+    // Sequence (Total ~3.6s)
+    // 1. Move to sliding after flap opens (1.5s)
     setTimeout(() => {
-      setIsCardSliding(true);
+      setAnimationStage('sliding');
+      // 2. Move to fading after card slides (1s)
+      setTimeout(() => {
+        setAnimationStage('fading');
+        // 3. Move to revealed after envelope fades (0.6s)
+        setTimeout(() => {
+          setAnimationStage('revealed');
+        }, 600);
+      }, 1000);
     }, 1500);
-
-    setTimeout(() => {
-      setIsEnvelopeFading(true);
-    }, 2500);
 
     try {
       await db.collection('notes').doc(id).update({ opened: true });
@@ -76,7 +64,7 @@ export default function NoteViewer() {
 
   if (isNoteLoading) {
     return (
-      <div className="min-h-screen bg-[#0d0d0d] flex items-center justify-center">
+      <div className="fixed inset-0 bg-[#000] flex items-center justify-center z-[9999]">
         <div className="w-12 h-12 border-4 border-white/20 border-t-[#b89e7a] rounded-full animate-spin" />
       </div>
     );
@@ -84,101 +72,148 @@ export default function NoteViewer() {
 
   if (status.type === 'error') {
     return (
-      <div className="min-h-screen bg-[#0d0d0d] flex flex-col items-center justify-center p-6 text-center">
-        <div className="mb-8 text-8xl">✉️</div>
-        <h2 className="font-sans text-white text-2xl md:text-3xl mb-8 tracking-tight font-light">
+      <div className="fixed inset-0 bg-[#000] flex flex-col items-center justify-center p-8 text-center z-[9999] overflow-hidden">
+        <div className="mb-10 text-9xl">✉️</div>
+        <h2 className="font-sans text-white text-2xl md:text-3xl mb-10 tracking-tight font-light border-0 mt-0">
           {status.message}
         </h2>
-        <button 
-          onClick={() => window.location.href = '/'}
-          className="px-8 py-4 bg-[#b89e7a] text-black font-bold uppercase tracking-[0.2em] text-xs hover:bg-[#c9bda4] transition-all"
+        <Link 
+          to="/"
+          className="px-10 py-5 bg-white text-black font-bold uppercase tracking-[0.2em] text-xs hover:bg-gray-200 transition-all rounded-sm"
         >
           Send your own note →
-        </button>
+        </Link>
       </div>
     );
   }
 
+  const isThemeBgClass = viewingData?.theme_bg?.startsWith('bg-');
+
   return (
-    <div 
-      className={`min-h-screen flex flex-col items-center justify-center p-6 transition-all duration-1000 ${viewingData?.theme_bg?.startsWith('bg-') ? viewingData.theme_bg : ''}`}
-      style={!viewingData?.theme_bg?.startsWith('bg-') ? { backgroundColor: viewingData?.theme_bg || '#000' } : {}}
-    >
-      <button 
-        onClick={() => setIsMuted(!isMuted)}
-        className="fixed top-6 right-6 z-[100] p-3 rounded-full bg-black/20 hover:bg-black/40 transition-colors text-white/50 hover:text-white"
-      >
-        {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-      </button>
-
-      <div className="relative w-full max-w-2xl min-h-[500px] flex items-center justify-center">
-        {!isEnvelopeFading ? (
-          <div 
-            onClick={!envelopeOpened ? handleOpenEnvelope : undefined}
-            className={`w-full max-w-md aspect-[3/2] bg-[#8B4513] relative group shadow-2xl transition-all duration-500 z-50 overflow-visible ${!envelopeOpened ? 'cursor-pointer hover:scale-105' : ''}`}
-          >
-            <div 
-              className={`absolute top-0 left-0 w-full h-1/2 bg-[#A0522D] origin-top border-b border-black/10 z-40`} 
-              style={{ 
-                clipPath: 'polygon(0 0, 100% 0, 50% 100%)',
-                animation: envelopeOpened ? 'envelope-open-top 1.5s forwards ease-in-out' : 'none'
-              }} 
-            />
-            
-            <div 
-              className={`absolute inset-x-8 top-4 bottom-4 bg-white shadow-lg p-6 z-10`}
-              style={{
-                animation: isCardSliding ? 'card-slide-up 1s forwards ease-out' : 'none'
-              }}
-            >
-                <div className="w-full h-4 bg-gray-100 mb-4" />
-                <div className="w-[80%] h-2 bg-gray-50 mb-2" />
-                <div className="w-[90%] h-2 bg-gray-50 mb-2" />
-                <div className="w-[70%] h-2 bg-gray-50" />
-            </div>
-
-            <div className="absolute bottom-0 left-0 w-0 h-0 border-l-[180px] md:border-l-[224px] border-l-transparent border-r-[180px] md:border-r-[224px] border-r-transparent border-b-[120px] md:border-b-[150px] border-b-[#A0522D] z-30 pointer-events-none" />
-            
-            {!envelopeOpened && (
-               <div className="absolute inset-0 bg-[#8B4513] flex flex-col items-center justify-center gap-4 z-10">
-                  <Mail size={48} className="text-[#f4e4c1]" />
-                  <p className="font-serif-elegant tracking-[0.2em] text-[#f4e4c1] text-xs uppercase animate-pulse">Click to open</p>
-               </div>
-            )}
-          </div>
-        ) : (
+    <div className="fixed inset-0 w-screen h-screen overflow-hidden bg-black selection:bg-white/20">
+      {/* Background Transition */}
+      <AnimatePresence>
+        {animationStage === 'revealed' && (
           <motion.div 
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            className={`w-full max-w-[600px] p-10 md:p-14 relative flex flex-col shadow-2xl rounded-[16px]`}
-            style={{
-              backgroundColor: 'white',
-              color: viewingData?.text_color,
-              fontFamily: viewingData?.font_family
-            }}
-          >
-             <div className="text-center mb-10 border-b border-black/5 pb-6">
-                <p className="text-[10px] uppercase tracking-[0.3em] opacity-60 font-bold">— A Note For You —</p>
-             </div>
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5 }}
+            className={`fixed inset-0 w-full h-full z-0 transition-colors duration-1000 ${isThemeBgClass ? viewingData.theme_bg : ''}`}
+            style={!isThemeBgClass ? { backgroundColor: viewingData?.theme_bg || '#000' } : {}}
+          />
+        )}
+      </AnimatePresence>
 
+      <div className="relative w-full h-full flex items-center justify-center pointer-events-none">
+        {animationStage !== 'revealed' && (
+          <div 
+            className={`relative w-[320px] md:w-[450px] aspect-[1.5/1] transition-all duration-500 pointer-events-auto
+              ${animationStage === 'fading' ? 'opacity-0 scale-105 blur-sm' : 'opacity-100 scale-100'}
+            `}
+            style={{ transitionTimingFunction: 'ease-in-out', transitionDuration: '600ms' }}
+          >
+            {/* Envelope Frame */}
+            <div 
+              onClick={handleOpenEnvelope}
+              className={`absolute inset-0 bg-[#4e342e] shadow-2xl z-20 cursor-pointer overflow-visible
+                ${animationStage !== 'idle' ? 'cursor-default pointer-events-none' : 'hover:scale-105 active:scale-95 transition-transform'}
+              `}
+            >
+              {/* Flap (Top) */}
               <div 
-                className="flex-1 text-xl md:text-2xl leading-relaxed break-words text-center"
-                dangerouslySetInnerHTML={{ __html: viewingData?.message || "" }}
+                className="absolute top-0 left-0 w-full h-1/2 bg-[#5d4037] origin-top border-b border-black/10 z-40 transition-transform duration-[1500ms] ease-in-out"
+                style={{ 
+                  clipPath: 'polygon(0 0, 100% 0, 50% 100%)',
+                  transform: (animationStage !== 'idle') ? 'rotateX(180deg)' : 'rotateX(0deg)',
+                  zIndex: (animationStage !== 'idle') ? 0 : 40
+                }}
               />
 
-              <div className="mt-14 flex flex-col items-center gap-4 border-t border-black/5 pt-10">
-                <p className="text-[11px] uppercase tracking-[0.2em] opacity-40">Sent anonymously via NoNameNote</p>
-                <button 
-                  onClick={() => window.location.href = '/'}
-                  className="mt-4 text-[10px] uppercase tracking-[0.3em] opacity-30 hover:opacity-100 transition-opacity"
-                >
-                  Send your own note
-                </button>
+              {/* Card (Inside) */}
+              <div 
+                className="absolute left-1/2 -translate-x-1/2 top-4 w-[90%] h-[90%] bg-white shadow-inner flex flex-col p-4 z-10 transition-transform duration-[1000ms] ease-out"
+                style={{
+                  transform: (animationStage === 'sliding' || animationStage === 'fading') 
+                    ? 'translate(-50%, -120px)' 
+                    : 'translate(-50%, 0)'
+                }}
+              >
+                <div className="w-full h-3 bg-gray-100 mb-3" />
+                <div className="w-full h-1 bg-gray-50 mb-1" />
+                <div className="w-[80%] h-1 bg-gray-50 mb-1" />
+                <div className="w-[90%] h-1 bg-gray-50" />
               </div>
-          </motion.div>
+
+              {/* Front Shadow/Body V */}
+              <div 
+                className="absolute inset-0 bg-[#4e342e] z-30"
+                style={{ clipPath: 'polygon(0 0, 50% 50%, 100% 0, 100% 100%, 0 100%)' }}
+              />
+
+              {/* Click instruction */}
+              {animationStage === 'idle' && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-50">
+                  <Mail size={40} className="text-[#a1887f] opacity-50" />
+                  <p className="text-[10px] tracking-[0.4em] text-[#a1887f] uppercase font-bold animate-pulse">Touch to reveal</p>
+                </div>
+              )}
+            </div>
+          </div>
         )}
+
+        {/* Revealed Note Content */}
+        <AnimatePresence>
+          {animationStage === 'revealed' && (
+            <motion.div 
+              initial={{ opacity: 0, y: 40, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
+              className="relative z-10 w-full max-w-[560px] mx-6 pointer-events-auto"
+            >
+              <div 
+                className="w-full p-10 md:p-14 rounded-2xl shadow-2xl backdrop-blur-md flex flex-col items-start text-left"
+                style={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                  color: viewingData?.text_color || '#fff',
+                  fontFamily: viewingData?.font_family
+                }}
+              >
+                <div className="w-full text-center mb-12 border-b border-current opacity-10 pb-8">
+                  <p className="text-[10px] uppercase tracking-[0.4em] font-black">— A Note For You —</p>
+                </div>
+
+                <div 
+                  className="w-full text-xl md:text-2xl leading-relaxed whitespace-pre-wrap message-content"
+                  dangerouslySetInnerHTML={{ __html: viewingData?.message || "" }}
+                />
+
+                <div className="w-full mt-14 pt-10 border-t border-current opacity-10 flex flex-col items-center gap-6">
+                  <p className="text-[9px] uppercase tracking-[0.3em] font-bold opacity-40">Sent anonymously via NoNameNote</p>
+                  
+                  <Link 
+                    to="/"
+                    className="text-[10px] uppercase tracking-[0.4em] font-medium opacity-30 hover:opacity-100 transition-opacity flex items-center gap-2"
+                  >
+                    Send your own note →
+                  </Link>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        .message-content * {
+          text-align: inherit !important;
+          color: inherit !important;
+        }
+        .message-content blockquote {
+          background: rgba(0,0,0,0.05);
+          margin-left: 0;
+          margin-right: 0;
+        }
+      `}} />
     </div>
   );
 }

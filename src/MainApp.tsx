@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, 
   Send, Mail, CheckCircle2, AlertCircle,
-  ChevronLeft, ChevronRight, Heading, Highlighter, Quote, Volume2, VolumeX
+  ChevronLeft, ChevronRight, Heading, Highlighter, Quote
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import emailjs from '@emailjs/browser';
@@ -19,7 +19,6 @@ export default function MainApp() {
   const [highlighterMode, setHighlighterMode] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
-  const [isMuted, setIsMuted] = useState(false);
 
   const editorRef = useRef<HTMLDivElement>(null);
   const themeScrollRef = useRef<HTMLDivElement>(null);
@@ -336,14 +335,6 @@ export default function MainApp() {
               </span>
             </div>
           </div>
-
-          <button 
-            onClick={() => setIsMuted(!isMuted)}
-            className="p-3 rounded-full bg-white/5 hover:bg-white/10 transition-colors text-white/40 hover:text-white/80"
-            title={isMuted ? "Unmute" : "Mute"}
-          >
-            {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-          </button>
         </motion.div>
       </header>
 
