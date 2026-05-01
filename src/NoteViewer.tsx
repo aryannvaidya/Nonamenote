@@ -107,57 +107,94 @@ export default function NoteViewer() {
       <div className="relative w-full h-full flex items-center justify-center pointer-events-none">
         {animationStage !== 'revealed' && (
           <div 
-            className={`relative w-[320px] md:w-[450px] aspect-[1.5/1] transition-all duration-500 pointer-events-auto
-              ${animationStage === 'fading' ? 'opacity-0 scale-105 blur-sm' : 'opacity-100 scale-100'}
+            className={`relative w-[340px] md:w-[480px] aspect-[1.5/1] transition-all duration-700 pointer-events-auto
+              ${animationStage === 'fading' ? 'opacity-0 scale-110 blur-md translate-y-[-20px]' : 'opacity-100 scale-100'}
             `}
-            style={{ transitionTimingFunction: 'ease-in-out', transitionDuration: '600ms' }}
+            style={{ transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)' }}
           >
-            {/* Envelope Frame */}
+            {/* Envelope Frame - Realistic Paper Texture and Depth */}
             <div 
               onClick={handleOpenEnvelope}
-              className={`absolute inset-0 bg-[#4e342e] shadow-2xl z-20 cursor-pointer overflow-visible
-                ${animationStage !== 'idle' ? 'cursor-default pointer-events-none' : 'hover:scale-105 active:scale-95 transition-transform'}
+              className={`absolute inset-0 bg-[#3e2723] rounded-sm shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-20 cursor-pointer overflow-visible
+                ${animationStage !== 'idle' ? 'cursor-default pointer-events-none' : 'hover:scale-105 active:scale-95 transition-transform duration-300'}
               `}
+              style={{
+                backgroundImage: 'linear-gradient(135deg, rgba(0,0,0,0.1) 0%, transparent 100%)',
+                boxShadow: animationStage === 'idle' 
+                  ? '0 20px 50px rgba(0,0,0,0.5), inset 0 0 100px rgba(0,0,0,0.2)' 
+                  : '0 5px 15px rgba(0,0,0,0.3)'
+              }}
             >
-              {/* Flap (Top) */}
+              {/* Flap (Top) - Improved color and shadow */}
               <div 
-                className="absolute top-0 left-0 w-full h-1/2 bg-[#5d4037] origin-top border-b border-black/10 z-40 transition-transform duration-[1500ms] ease-in-out"
+                className="absolute top-0 left-0 w-full h-1/2 bg-[#4e342e] origin-top z-40 transition-transform duration-[1500ms] ease-in-out"
                 style={{ 
                   clipPath: 'polygon(0 0, 100% 0, 50% 100%)',
                   transform: (animationStage !== 'idle') ? 'rotateX(180deg)' : 'rotateX(0deg)',
-                  zIndex: (animationStage !== 'idle') ? 0 : 40
-                }}
-              />
-
-              {/* Card (Inside) */}
-              <div 
-                className="absolute left-1/2 -translate-x-1/2 top-4 w-[90%] h-[90%] bg-white shadow-inner flex flex-col p-4 z-10 transition-transform duration-[1000ms] ease-out"
-                style={{
-                  transform: (animationStage === 'sliding' || animationStage === 'fading') 
-                    ? 'translate(-50%, -120px)' 
-                    : 'translate(-50%, 0)'
+                  zIndex: (animationStage !== 'idle') ? 0 : 45,
+                  boxShadow: 'inset 0 10px 20px rgba(0,0,0,0.2)'
                 }}
               >
-                <div className="w-full h-3 bg-gray-100 mb-3" />
-                <div className="w-full h-1 bg-gray-50 mb-1" />
-                <div className="w-[80%] h-1 bg-gray-50 mb-1" />
-                <div className="w-[90%] h-1 bg-gray-50" />
+                {/* Wax Seal / Decorative Element */}
+                {animationStage === 'idle' && (
+                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-10 h-10 bg-[#b89e7a] rounded-full shadow-lg z-50 flex items-center justify-center border-2 border-[#8d6e63]/20">
+                    <div className="w-6 h-6 border border-white/20 rounded-full flex items-center justify-center">
+                       <span className="text-[10px] text-white/40 font-serif">N</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Front Shadow/Body V */}
+              {/* Card (Inside) - More realistic card feel */}
               <div 
-                className="absolute inset-0 bg-[#4e342e] z-30"
-                style={{ clipPath: 'polygon(0 0, 50% 50%, 100% 0, 100% 100%, 0 100%)' }}
+                className="absolute left-1/2 -translate-x-1/2 top-4 w-[92%] h-[92%] bg-[#fafafa] shadow-lg flex flex-col p-6 z-10 transition-transform duration-[1200ms] cubic-bezier(0.34, 1.56, 0.64, 1)"
+                style={{
+                  transform: (animationStage === 'sliding' || animationStage === 'fading') 
+                    ? 'translate(-50%, -140px)' 
+                    : 'translate(-50%, 0)',
+                  border: '1px solid rgba(0,0,0,0.05)'
+                }}
+              >
+                <div className="w-full h-4 bg-gray-100/80 mb-4 rounded-sm" />
+                <div className="w-[85%] h-1.5 bg-gray-50 mb-2 rounded-full" />
+                <div className="w-[95%] h-1.5 bg-gray-50 mb-2 rounded-full" />
+                <div className="w-[75%] h-1.5 bg-gray-50 rounded-full" />
+                <div className="mt-auto flex justify-end">
+                   <div className="w-10 h-10 rounded-full border-2 border-gray-100 flex items-center justify-center">
+                      <div className="w-6 h-6 border dash-border border-gray-100 rounded-full" />
+                   </div>
+                </div>
+              </div>
+
+              {/* Front Body - Side triangles for realistic envelope fold */}
+              <div 
+                className="absolute inset-0 bg-[#3e2723] z-30"
+                style={{ 
+                  clipPath: 'polygon(0 0, 50% 55%, 100% 0, 100% 100%, 0 100%)',
+                  backgroundImage: 'linear-gradient(to top, rgba(0,0,0,0.2), transparent)' 
+                }}
               />
+
+              {/* Inner Shadow for opening */}
+              <div className="absolute inset-0 bg-black/40 z-0 pointer-events-none" />
 
               {/* Click instruction */}
               {animationStage === 'idle' && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-50">
-                  <Mail size={40} className="text-[#a1887f] opacity-50" />
-                  <p className="text-[10px] tracking-[0.4em] text-[#a1887f] uppercase font-bold animate-pulse">Touch to reveal</p>
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 z-50 pointer-events-none">
+                  <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center backdrop-blur-sm border border-white/10 group-hover:scale-110 transition-transform">
+                    <Mail size={32} className="text-[#b89e7a]/60" />
+                  </div>
+                  <div className="flex flex-col items-center gap-1">
+                    <p className="text-[10px] tracking-[0.5em] text-[#b89e7a] uppercase font-black">Private Message</p>
+                    <p className="text-[8px] tracking-[0.2em] text-white/30 uppercase">Tab to reveal transmission</p>
+                  </div>
                 </div>
               )}
             </div>
+            {/* Ground Shadow */}
+            {animationStage === 'idle' && (
+               <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 w-[80%] h-4 bg-black/40 blur-xl rounded-full scale-x-110" />
+            )}
           </div>
         )}
 
