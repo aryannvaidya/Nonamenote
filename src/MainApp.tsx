@@ -906,9 +906,9 @@ export default function MainApp() {
                 <div className="h-px w-32 bg-gradient-to-r from-transparent via-[#b89e7a]/30 to-transparent" />
               </div>
 
-              <div className="flex flex-col gap-4 text-[11px] text-white/70 leading-relaxed font-mono">
+              <div className="flex flex-col gap-4 text-[11px] text-white/70 leading-relaxed font-mono max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
                 <div className="space-y-1">
-                  <p className="text-[#b89e7a]/60 font-black uppercase tracking-widest text-[9px] mb-2">Safety & Behavior</p>
+                  <p className="text-[#b89e7a]/60 font-black uppercase tracking-widest text-[9px] mb-2 sticky top-0 bg-[#1a1a1a] py-1">Safety & Behavior</p>
                   <p>• No <span className="text-[#b89e7a] font-bold underline decoration-[#b89e7a]/30 underline-offset-2">harassment</span>, bullying, or threats</p>
                   <p>• No <span className="text-[#b89e7a] font-bold underline decoration-[#b89e7a]/30 underline-offset-2">hate speech</span> or targeting based on identity</p>
                   <p>• No <span className="text-[#b89e7a] font-bold underline decoration-[#b89e7a]/30 underline-offset-2">sexually explicit</span> or inappropriate content</p>
@@ -916,15 +916,16 @@ export default function MainApp() {
                 </div>
 
                 <div className="space-y-1">
-                  <p className="text-[#b89e7a]/60 font-black uppercase tracking-widest text-[9px] mb-2">Privacy & Misuse</p>
+                  <p className="text-[#b89e7a]/60 font-black uppercase tracking-widest text-[9px] mb-2 sticky top-0 bg-[#1a1a1a] py-1">Privacy & Misuse</p>
                   <p>• Do not share <span className="text-[#b89e7a] font-bold underline decoration-[#b89e7a]/30 underline-offset-2">personal information</span> (yours or others’)</p>
                   <p>• Do not <span className="text-[#b89e7a] font-bold underline decoration-[#b89e7a]/30 underline-offset-2">impersonate</span> someone else</p>
                   <p>• Do not use this to <span className="text-[#b89e7a] font-bold underline decoration-[#b89e7a]/30 underline-offset-2">spam</span> or scam</p>
                 </div>
 
                 <div className="space-y-1">
-                  <p className="text-[#b89e7a]/60 font-black uppercase tracking-widest text-[9px] mb-2">Accountability</p>
+                  <p className="text-[#b89e7a]/60 font-black uppercase tracking-widest text-[9px] mb-2 sticky top-0 bg-[#1a1a1a] py-1">Accountability</p>
                   <p>• Messages may be <span className="text-[#b89e7a] font-bold underline decoration-[#b89e7a]/30 underline-offset-2">filtered</span> for abuse prevention</p>
+                  <p>• Violations can lead to <span className="text-[#b89e7a] font-bold underline decoration-[#b89e7a]/30 underline-offset-2">restriction</span> or blocking</p>
                 </div>
               </div>
 
@@ -973,7 +974,7 @@ export default function MainApp() {
                     : 'bg-white/5 text-white/20 cursor-not-allowed'}
                 `}
               >
-                Initialize App
+                PROCEED
               </button>
             </motion.div>
           </motion.div>
