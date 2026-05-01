@@ -651,7 +651,7 @@ export default function MainApp() {
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-lg bg-[#1a1a1a] border border-white/5 p-8 flex flex-col gap-6 max-h-[80vh] overflow-hidden relative"
+              className={`w-full ${activeLogThread ? 'max-w-2xl' : 'max-w-lg'} bg-[#1a1a1a] border border-white/5 p-8 flex flex-col gap-6 max-h-[85vh] overflow-hidden relative transition-all duration-300`}
               onClick={e => e.stopPropagation()}
             >
               <div className="flex justify-between items-center border-b border-white/5 pb-6">
@@ -750,7 +750,7 @@ export default function MainApp() {
                   )
                 ) : (
                   // Thread View
-                  <div className="flex flex-col gap-4 py-2">
+                  <div className="flex flex-col gap-3 py-2">
                     {/* Original Message */}
                     <div className="relative group">
                       <div className="absolute top-2 left-4 z-10 bg-black/60 backdrop-blur-sm px-2 py-1 rounded text-[8px] uppercase tracking-widest font-black text-white/80 border border-white/5">Original Dispatch</div>
@@ -758,10 +758,10 @@ export default function MainApp() {
                       {activeNoteData ? (
                         <div className="rounded-sm overflow-hidden border border-white/10 shadow-2xl bg-black/20">
                           <div 
-                            className="transform origin-top scale-[0.85] -mb-[15%] pointer-events-none select-none w-full"
+                            className="pointer-events-none select-none w-full p-8 md:p-12"
                             style={{ 
                               background: activeNoteData.theme_bg,
-                              minHeight: '300px'
+                              minHeight: '200px'
                             }}
                             dangerouslySetInnerHTML={{ __html: activeNoteData.noteHTML }}
                           />
@@ -769,11 +769,11 @@ export default function MainApp() {
                       ) : (
                         <div className="bg-white/5 border border-white/5 rounded-sm p-8 italic text-[11px] text-white/60">
                            <div dangerouslySetInnerHTML={{ __html: logs.find(l => l.noteId === activeLogThread)?.content || '' }} />
-                           <div className="mt-4 pt-4 border-t border-white/5 text-[9px] opacity-40 uppercase tracking-widest font-bold">Fetching transmission history...</div>
+                           <div className="mt-3 pt-3 border-t border-white/5 text-[9px] opacity-40 uppercase tracking-widest font-bold">Fetching transmission history...</div>
                         </div>
                       )}
 
-                      <div className="mt-2 flex items-center justify-between px-2">
+                      <div className="mt-1.5 flex items-center justify-between px-1">
                         <div className="flex items-center gap-2">
                           <span className={`text-[7px] font-black uppercase tracking-widest px-1 py-0.5 rounded-sm ${logs.find(l => l.noteId === activeLogThread)?.opened ? 'text-green-400' : 'text-blue-400'}`}>
                             ● {logs.find(l => l.noteId === activeLogThread)?.opened ? 'Seen' : 'Delivered'}
@@ -787,13 +787,13 @@ export default function MainApp() {
                       </div>
                     </div>
 
-                    <div className="flex justify-center relative h-6">
+                    <div className="flex justify-center relative h-4">
                       <div className="w-[1px] h-full bg-gradient-to-b from-white/10 to-transparent" />
-                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#1a1a1a] p-1 text-[#b89e7a] opacity-30 animate-bounce text-xs">↓</div>
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#1a1a1a] px-1.5 py-0.5 text-[#b89e7a] opacity-30 animate-bounce text-[10px]">↓</div>
                     </div>
 
                     {/* Replies */}
-                    <div className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-3">
                       {(replies[activeLogThread] || []).length === 0 ? (
                         <div className="text-center py-6 opacity-20 italic text-xs">Awaiting anonymous response...</div>
                       ) : (
