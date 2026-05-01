@@ -2,9 +2,23 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, 
-  Send, Mail, CheckCircle2, AlertCircle, History,
+  Send, Mail, CheckCircle2, AlertCircle, History, X,
   ChevronLeft, ChevronRight, Heading, Highlighter, Quote
 } from 'lucide-react';
+
+// Helper for relative time
+const getRelativeTime = (timestamp: number) => {
+  const now = Date.now();
+  const diff = Math.max(0, now - timestamp);
+  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  return `${days}d ago`;
+};
 import confetti from 'canvas-confetti';
 import emailjs from '@emailjs/browser';
 import { db } from './firebase';
@@ -23,6 +37,8 @@ export default function MainApp() {
   const [showLogs, setShowLogs] = useState(false);
   const [logs, setLogs] = useState<{ id: string; noteId?: string; recipient: string; content: string; timestamp: number; hasUnread?: boolean; replyCount?: number; opened?: boolean; openedAt?: number }[]>([]);
   const [activeLogThread, setActiveLogThread] = useState<string | null>(null);
+  const [activeNoteData, setActiveNoteData] = useState<any>(null);
+  const [showFullTime, setShowFullTime] = useState<{[key: string]: boolean}>({});
   const [replies, setReplies] = useState<{ [noteId: string]: any[] }>({});
 
   const editorRef = useRef<HTMLDivElement>(null);
@@ -645,14 +661,16 @@ export default function MainApp() {
                   </h3>
                   {activeLogThread && (
                     <button 
-                      onClick={() => setActiveLogThread(null)}
+                      onClick={() => { setActiveLogThread(null); setActiveNoteData(null); }}
                       className="text-[9px] text-white/30 uppercase tracking-[0.2em] font-bold hover:text-white transition-colors mt-1 flex items-center gap-1"
                     >
                       ← Back to archives
                     </button>
                   )}
                 </div>
-                <button onClick={() => { setShowLogs(false); setActiveLogThread(null); }} className="text-white/40 hover:text-white uppercase text-[10px] tracking-widest font-bold">Close</button>
+                <button onClick={() => { setShowLogs(false); setActiveLogThread(null); setActiveNoteData(null); }} className="p-2 -mr-2 text-white/40 hover:text-white transition-colors">
+                  <X size={20} />
+                </button>
               </div>
 
               <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
@@ -665,7 +683,7 @@ export default function MainApp() {
                       {logs.map(log => (
                         <div 
                           key={log.id} 
-                          onClick={() => {
+                          onClick={async () => {
                             if (log.noteId) {
                               setActiveLogThread(log.noteId);
                               // Mark all replies in this thread as read locally
@@ -674,6 +692,16 @@ export default function MainApp() {
                                 localStorage.setItem('sentNotesLog', JSON.stringify(next));
                                 return next;
                               });
+
+                              // Fetch full note data for theme and content
+                              try {
+                                const noteSnap = await db.collection('notes').doc(log.noteId).get();
+                                if (noteSnap.exists) {
+                                  setActiveNoteData(noteSnap.data());
+                                }
+                              } catch (e) {
+                                console.error("Error fetching note details", e);
+                              }
                             }
                           }}
                           className={`group border-b border-white/5 pb-4 pt-2 cursor-pointer hover:bg-white/[0.02] transition-colors -mx-2 px-2 rounded-sm ${log.hasUnread ? 'bg-red-500/[0.03]' : ''}`}
@@ -708,10 +736,11 @@ export default function MainApp() {
                               <div className="flex items-center gap-2 px-2 py-0.5 bg-white/5 rounded-full border border-white/5">
                                 <div className="relative flex items-center">
                                   <span className="text-[9px]">💬</span>
-                                  <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-green-500 rounded-full shadow-[0_0_4px_rgba(34,197,94,0.6)]" />
+                                  {log.hasUnread && (
+                                    <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-green-500 rounded-full shadow-[0_0_4px_rgba(34,197,94,0.6)] animate-pulse" />
+                                  )}
                                 </div>
                                 <span className="text-[8px] font-mono text-white/60">{log.replyCount}</span>
-                                {log.hasUnread && <span className="w-1 h-1 bg-red-500 rounded-full animate-pulse" title="Unread Response" />}
                               </div>
                             ) : null}
                           </div>
@@ -723,46 +752,71 @@ export default function MainApp() {
                   // Thread View
                   <div className="flex flex-col gap-8 py-2">
                     {/* Original Message */}
-                    <div className="bg-white/5 border border-white/5 rounded-sm p-5 relative">
-                      <div className="absolute -top-3 left-4 bg-[#1a1a1a] px-2 text-[8px] uppercase tracking-widest font-black text-white/20">Your Dispatch</div>
-                      <div 
-                        className="text-[11px] leading-relaxed text-white/80 italic mb-4"
-                        dangerouslySetInnerHTML={{ __html: logs.find(l => l.noteId === activeLogThread)?.content || '' }}
-                      />
-                      <div className="flex items-center gap-2 pt-2 border-t border-white/5">
-                        <span className={`text-[7px] font-black uppercase tracking-widest px-1 py-0.5 rounded-sm ${logs.find(l => l.noteId === activeLogThread)?.opened ? 'text-green-400' : 'text-blue-400'}`}>
-                          ● {logs.find(l => l.noteId === activeLogThread)?.opened ? 'Seen' : 'Delivered'}
-                        </span>
-                        {logs.find(l => l.noteId === activeLogThread)?.openedAt && (
-                          <span className="text-[7px] text-white/20 font-mono italic">
-                            {new Date(logs.find(l => l.noteId === activeLogThread)!.openedAt!).toLocaleString()}
+                    <div className="relative group overflow-hidden">
+                      <div className="absolute top-2 left-4 z-10 bg-black/40 backdrop-blur-sm px-2 py-1 rounded text-[8px] uppercase tracking-widest font-black text-white/60 border border-white/5">Original Dispatch</div>
+                      
+                      {activeNoteData ? (
+                        <div className="rounded-sm overflow-hidden border border-white/10 shadow-2xl scale-[0.95] origin-top bg-black/20">
+                          <div 
+                            className="transform origin-top scale-[0.6] -mb-[40%] md:-mb-[35%] pointer-events-none select-none max-w-full"
+                            style={{ 
+                              background: activeNoteData.theme_bg,
+                              minHeight: '400px'
+                            }}
+                            dangerouslySetInnerHTML={{ __html: activeNoteData.noteHTML }}
+                          />
+                        </div>
+                      ) : (
+                        <div className="bg-white/5 border border-white/5 rounded-sm p-8 italic text-[11px] text-white/60">
+                           <div dangerouslySetInnerHTML={{ __html: logs.find(l => l.noteId === activeLogThread)?.content || '' }} />
+                           <div className="mt-6 pt-4 border-t border-white/5 text-[9px] opacity-40 uppercase tracking-widest font-bold">Fetching transmission history...</div>
+                        </div>
+                      )}
+
+                      <div className="mt-4 flex items-center justify-between px-2">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[7px] font-black uppercase tracking-widest px-1 py-0.5 rounded-sm ${logs.find(l => l.noteId === activeLogThread)?.opened ? 'text-green-400' : 'text-blue-400'}`}>
+                            ● {logs.find(l => l.noteId === activeLogThread)?.opened ? 'Seen' : 'Delivered'}
                           </span>
-                        )}
+                          {logs.find(l => l.noteId === activeLogThread)?.openedAt && (
+                            <span className="text-[7px] text-white/20 font-mono italic">
+                              at {new Date(logs.find(l => l.noteId === activeLogThread)!.openedAt!).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
                     <div className="flex justify-center relative h-10">
                       <div className="w-[1px] h-full bg-gradient-to-b from-white/10 to-transparent" />
-                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#1a1a1a] p-2 text-[#b89e7a] opacity-30">↓</div>
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#1a1a1a] p-2 text-[#b89e7a] opacity-30 animate-bounce">↓</div>
                     </div>
 
                     {/* Replies */}
                     <div className="flex flex-col gap-6">
                       {(replies[activeLogThread] || []).length === 0 ? (
-                        <div className="text-center py-10 opacity-20 italic text-xs">Waiting for a response...</div>
+                        <div className="text-center py-10 opacity-20 italic text-xs">Awaiting anonymous response...</div>
                       ) : (
                         replies[activeLogThread].map((reply: any) => {
+                          const replyTime = reply.timestamp?.toMillis ? reply.timestamp.toMillis() : (reply.timestamp?.seconds ? reply.timestamp.seconds * 1000 : Date.now());
+                          
                           // Mark as read in Firestore if needed
                           if (!reply.read) {
                             db.collection('notes').doc(activeLogThread).collection('replies').doc(reply.id).update({ read: true });
                           }
                           
                           return (
-                            <div key={reply.id} className="bg-[#b89e7a]/5 border border-[#b89e7a]/10 rounded-sm p-6 relative">
-                              <div className="absolute -top-3 left-4 bg-[#1a1a1a] px-2 text-[8px] uppercase tracking-widest font-black text-[#b89e7a]">💬 Anonymous Response</div>
+                            <div key={reply.id} className="bg-[#b89e7a]/5 border border-[#b89e7a]/10 rounded-sm p-6 relative group transition-all hover:bg-[#b89e7a]/10">
+                              <div className="absolute -top-3 left-4 bg-[#1a1a1a] px-2 text-[8px] uppercase tracking-widest font-black text-[#b89e7a]">💬 Response Received</div>
                               <p className="text-[12px] leading-relaxed text-white/90 font-serif mb-4">"{reply.message}"</p>
-                              <div className="text-[9px] text-[#b89e7a]/40 font-mono tracking-widest uppercase text-right">
-                                {reply.timestamp?.toDate ? new Date(reply.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now'} ago
+                              <div 
+                                className="text-[9px] text-[#b89e7a]/40 font-mono tracking-widest uppercase text-right cursor-pointer hover:text-[#b89e7a] transition-colors select-none"
+                                onClick={() => setShowFullTime(prev => ({...prev, [reply.id]: !prev[reply.id]}))}
+                              >
+                                {showFullTime[reply.id] 
+                                  ? new Date(replyTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
+                                  : getRelativeTime(replyTime)
+                                }
                               </div>
                             </div>
                           );
