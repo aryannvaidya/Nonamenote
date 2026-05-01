@@ -18,7 +18,7 @@ a unique link to anyone's email completely anonymously.
 - Vanilla HTML, CSS, JavaScript
 - Firebase Firestore
 - EmailJS
-- Vercel (hosting)
+- Vercel (hosting).  
 
 ## Live
 https://nonamenote.vercel.app
