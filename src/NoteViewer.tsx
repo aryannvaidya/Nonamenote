@@ -262,9 +262,9 @@ export default function NoteViewer() {
                 <p className="text-[10px] uppercase tracking-[0.5em] font-black">— Secure Transmission Resolved —</p>
               </div>
 
-              {/* Note Container (Responsive height) */}
+              {/* Note Container (Fixed height) */}
               <div 
-                className="relative w-full max-w-[600px] h-[60vh] md:h-[65vh] shadow-[0_60px_120px_rgba(0,0,0,0.6)] rounded-sm overflow-hidden group border border-white/5 bg-black"
+                className="relative w-full max-w-[600px] h-[900px] shadow-[0_60px_120px_rgba(0,0,0,0.6)] rounded-sm overflow-hidden group border border-white/5 bg-black"
                 ref={contentRef}
               >
                 <div 
@@ -297,12 +297,12 @@ export default function NoteViewer() {
               <div className="w-full max-w-[600px] flex flex-col items-center gap-6 bg-black/40 backdrop-blur-md p-8 rounded-sm border border-white/5 shadow-2xl">
                 {hasReplied ? (
                   <motion.div 
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="w-full border border-[#d4a843]/20 bg-[#d4a843]/5 rounded-lg py-3 flex items-center justify-center"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="py-2"
                   >
-                    <p className="text-[#d4a843] text-[10px] tracking-[0.4em] font-black uppercase flex items-center gap-2">
-                       Reply Dispatched Anonymously ✓
+                    <p className="text-[#d4a843] text-[11px] tracking-[0.5em] font-black uppercase">
+                       Reply Sent ✓
                     </p>
                   </motion.div>
                 ) : (
@@ -379,8 +379,8 @@ export default function NoteViewer() {
         }
         .note-viewer-card-wrapper #note-card #stamp {
           position: absolute !important;
-          top: 1rem !important;
-          right: 1rem !important;
+          top: 2.5rem !important;
+          right: 2.5rem !important;
           z-index: 5 !important;
           pointer-events: none !important;
         }
