@@ -276,7 +276,7 @@ export default function NoteViewer() {
                 </div>
 
                 <div 
-                  className="relative w-[600px] h-[450px] shadow-[0_60px_120px_rgba(0,0,0,0.6)] rounded-sm overflow-hidden group border border-white/5 bg-black"
+                  className="relative w-[600px] h-[1000px] shadow-[0_60px_120px_rgba(0,0,0,0.6)] rounded-sm overflow-hidden group border border-white/5 bg-black"
                   ref={contentRef}
                 >
                   <div 
@@ -288,18 +288,18 @@ export default function NoteViewer() {
                   />
                   
                   {/* Bottom Fade Gradient */}
-                  <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black/60 via-black/10 to-transparent pointer-events-none z-10" />
+                  <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none z-10" />
                   
                   {/* Scroll Indicator Arrow */}
                   <AnimatePresence>
                     {showScrollArrow && (
                       <motion.div 
                         initial={{ opacity: 0, y: -5 }}
-                        animate={{ opacity: 0.5, y: 0 }}
+                        animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0 }}
-                        className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 text-white pointer-events-none animate-bounce"
+                        className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 text-white pointer-events-none animate-bounce"
                       >
-                        <ChevronDown size={20} />
+                        <ChevronDown size={24} />
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -348,11 +348,11 @@ export default function NoteViewer() {
                   )}
                 </div>
 
-                <div className="flex flex-col items-center gap-8 opacity-40">
-                  <p className="text-[8px] uppercase tracking-[0.4em] font-bold">Sent via NoNameNote System</p>
+                <div className="flex flex-col items-center gap-8 opacity-80 mt-4">
+                  <p className="text-[9px] uppercase tracking-[0.4em] font-black text-white">Sent via NoNameNote System</p>
                   <Link 
                     to="/"
-                    className="group text-[10px] uppercase tracking-[0.5em] font-bold hover:opacity-100 transition-all flex items-center gap-3"
+                    className="group text-[11px] uppercase tracking-[0.5em] font-black text-white border-b border-white/20 pb-1 hover:border-white transition-all flex items-center gap-3"
                   >
                     Send your own note
                     <span className="group-hover:translate-x-2 transition-transform">→</span>
@@ -388,7 +388,16 @@ export default function NoteViewer() {
           width: 100% !important;
           display: flex !important;
           flex-direction: column !important;
-          padding: 2.5rem !important; /* Fixed padding to match editor look better at 1:1 scale */
+          padding: 2.5rem !important;
+          position: relative !important;
+          overflow: hidden !important;
+        }
+        .note-viewer-card-wrapper #note-card #stamp {
+          position: absolute !important;
+          top: 1rem !important;
+          right: 1rem !important;
+          z-index: 5 !important;
+          pointer-events: none !important;
         }
         .note-viewer-card-wrapper #note-card > div[contenteditable="false"] {
           overflow-y: auto !important;
