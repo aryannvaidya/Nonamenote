@@ -171,22 +171,7 @@ export default function NoteViewer() {
   const particles = Array.from({ length: 25 });
 
   return (
-    <div className="fixed inset-0 w-screen h-screen overflow-hidden bg-black selection:bg-white/20">
-      {/* SVG Filter for Paper Grain */}
-      <svg className="hidden">
-        <defs>
-          <filter id="paper-noise">
-            <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="4" stitchTiles="stitch" />
-            <feColorMatrix type="saturate" values="0" />
-            <feComponentTransfer>
-              <feFuncR type="linear" slope="0.05" />
-              <feFuncG type="linear" slope="0.05" />
-              <feFuncB type="linear" slope="0.05" />
-            </feComponentTransfer>
-          </filter>
-        </defs>
-      </svg>
-
+    <div className="min-h-screen bg-black text-[#d3c5ad] selection:bg-[#b89e7a] selection:text-black overflow-y-auto custom-scrollbar relative">
       {/* Background Transition */}
       <AnimatePresence>
         {animationStage === 'revealed' && (
@@ -200,164 +185,164 @@ export default function NoteViewer() {
         )}
       </AnimatePresence>
 
-      <div className={`relative w-full h-full flex items-center justify-center overflow-hidden ${animationStage === 'animating' ? 'animating' : ''}`}>
-        {animationStage !== 'revealed' && (
-          <div className="viewer-overlay" onClick={startAnimation}>
-            {/* Background Dust */}
-            <div className="dust-container">
-              {particles.map((_, i) => (
-                <div 
-                  key={i} 
-                  className="dust"
-                  style={{
-                    left: `${Math.random() * 100}%`,
-                    top: `${Math.random() * 100}%`,
-                    width: `${Math.random() * 2 + 1}px`,
-                    height: `${Math.random() * 2 + 1}px`,
-                    animationDelay: `${Math.random() * 10}s`,
-                    animationDuration: `${15 + Math.random() * 10}s`
-                  }}
-                />
-              ))}
-            </div>
-
-            <div className={`envelope-wrapper ${animationStage === 'animating' ? 'envelope-fade-out' : ''}`}>
-              <div className="envelope">
-                <div className="envelope-back-flap" />
-                <div className="envelope-letter" />
-                <div className="envelope-front-left" />
-                <div className="envelope-front-right" />
-                
-                {/* Wax Seal with Shards */}
-                <div className="wax-seal-wrapper">
-                  <div className="seal-main">N</div>
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <div 
-                      key={i} 
-                      className="shard"
-                      style={{
-                        '--shard-dest': `translate(${(Math.random() - 0.5) * 200}px, ${(Math.random() - 0.5) * 200}px)`,
-                        '--shard-rot': `${Math.random() * 360}deg`,
-                        top: '50%',
-                        left: '50%',
-                        animationDelay: `${Math.random() * 0.1}s`
-                      } as any}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Labels */}
-            <div className={`absolute bottom-20 flex flex-col items-center gap-2 transition-all duration-700 ${animationStage === 'animating' ? 'opacity-0 scale-90 translate-y-12' : 'opacity-100 translate-y-0'}`}>
-              <p className="text-[#d4a843] font-mono text-[10px] tracking-[0.5em] uppercase font-black" style={{ fontFamily: '"Courier New", Courier, monospace' }}>
-                Private Transmission
-              </p>
-              <p className="text-white/30 text-[8px] uppercase tracking-[0.2em] font-medium" style={{ animation: 'labelPulse 2s ease-in-out infinite' }}>
-                Tap anywhere to reveal content
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Note Content */}
-        <AnimatePresence>
-          {animationStage === 'revealed' && (
+      <div className={`relative w-full min-h-screen flex flex-col items-center justify-center p-4 ${animationStage === 'revealed' ? 'pt-20 pb-20' : ''}`}>
+        <AnimatePresence mode="wait">
+          {animationStage !== 'revealed' ? (
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 30 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.4, ease: [0.34, 1.56, 0.64, 1] }}
-              className="fixed inset-0 z-10 w-full h-full flex items-center justify-center pointer-events-auto p-4"
-              id="viewer-container"
+              key="envelope-stage"
+              exit={{ opacity: 0, scale: 1.1, filter: 'blur(10px)' }}
+              transition={{ duration: 1 }}
+              className="flex flex-col items-center justify-center w-full"
+              onClick={startAnimation}
             >
-              <div className="flex flex-col items-center gap-6 w-full max-w-4xl transition-transform duration-500 origin-center" style={{ transform: 'scale(var(--note-scale, 1))' }}>
-                <div className="w-full text-center opacity-30">
-                  <p className="text-[10px] uppercase tracking-[0.5em] font-black">— Secure Transmission Resolved —</p>
-                </div>
-
-                <div 
-                  className="relative w-[600px] h-[1000px] shadow-[0_60px_120px_rgba(0,0,0,0.6)] rounded-sm overflow-hidden group border border-white/5 bg-black"
-                  ref={contentRef}
-                >
+              {/* Background Dust */}
+              <div className="dust-container">
+                {particles.map((_, i) => (
                   <div 
-                    className="w-full h-full note-viewer-card-wrapper"
-                    dangerouslySetInnerHTML={{ 
-                      __html: (viewingData?.noteHTML || "")
-                        .replace(/contenteditable="true"/g, 'contenteditable="false"')
+                    key={i} 
+                    className="dust"
+                    style={{
+                      left: `${Math.random() * 100}%`,
+                      top: `${Math.random() * 100}%`,
+                      width: `${Math.random() * 2 + 1}px`,
+                      height: `${Math.random() * 2 + 1}px`,
+                      animationDelay: `${Math.random() * 10}s`,
+                      animationDuration: `${15 + Math.random() * 10}s`
                     }}
                   />
-                  
-                  {/* Bottom Fade Gradient */}
-                  <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none z-10" />
-                  
-                  {/* Scroll Indicator Arrow */}
-                  <AnimatePresence>
-                    {showScrollArrow && (
-                      <motion.div 
-                        initial={{ opacity: 0, y: -5 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0 }}
-                        className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 text-white pointer-events-none animate-bounce"
-                      >
-                        <ChevronDown size={24} />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
+                ))}
+              </div>
 
-                {/* Reply Section */}
-                <div className="w-full max-w-[600px] flex flex-col items-center gap-6">
-                  <div className="w-full h-[1px] bg-white/10" />
+              <div className={`envelope-wrapper ${animationStage === 'animating' ? 'envelope-opening' : ''}`}>
+                <div className="envelope">
+                  <div className="envelope-back-flap" />
+                  <div className="envelope-letter" />
+                  <div className="envelope-front-left" />
+                  <div className="envelope-front-right" />
                   
-                  {hasReplied ? (
+                  {/* Wax Seal with Shards */}
+                  <div className="wax-seal-wrapper">
+                    <div className="seal-main">N</div>
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <div 
+                        key={i} 
+                        className="shard"
+                        style={{
+                          '--shard-dest': `translate(${(Math.random() - 0.5) * 200}px, ${(Math.random() - 0.5) * 200}px)`,
+                          '--shard-rot': `${Math.random() * 360}deg`,
+                          top: '50%',
+                          left: '50%',
+                          animationDelay: `${Math.random() * 0.1}s`
+                        } as any}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Labels */}
+              <div className={`mt-20 flex flex-col items-center gap-2 transition-all duration-700 ${animationStage === 'animating' ? 'opacity-0 scale-90 translate-y-12' : 'opacity-100 translate-y-0'}`}>
+                <p className="text-[#d4a843] font-mono text-[10px] tracking-[0.5em] uppercase font-black" style={{ fontFamily: '"Courier New", Courier, monospace' }}>
+                  Private Transmission
+                </p>
+                <p className="text-white/30 text-[8px] uppercase tracking-[0.2em] font-medium" style={{ animation: 'labelPulse 2s ease-in-out infinite' }}>
+                  Tap anywhere to reveal content
+                </p>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div 
+              key="note-stage"
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
+              className="flex flex-col items-center gap-12 w-full max-w-4xl"
+            >
+              <div className="w-full text-center opacity-30">
+                <p className="text-[10px] uppercase tracking-[0.5em] font-black">— Secure Transmission Resolved —</p>
+              </div>
+
+              {/* Note Container (Fixed height) */}
+              <div 
+                className="relative w-full max-w-[600px] h-[800px] shadow-[0_60px_120px_rgba(0,0,0,0.6)] rounded-sm overflow-hidden group border border-white/5 bg-black"
+                ref={contentRef}
+              >
+                <div 
+                  className="w-full h-full note-viewer-card-wrapper"
+                  dangerouslySetInnerHTML={{ 
+                    __html: (viewingData?.noteHTML || "")
+                      .replace(/contenteditable="true"/g, 'contenteditable="false"')
+                  }}
+                />
+                
+                {/* Bottom Fade Gradient */}
+                <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none z-10" />
+                
+                {/* Scroll Indicator Arrow */}
+                <AnimatePresence>
+                  {showScrollArrow && (
                     <motion.div 
-                      initial={{ opacity: 0, y: 10 }}
+                      initial={{ opacity: 0, y: -5 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="text-center py-4"
+                      exit={{ opacity: 0 }}
+                      className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 text-white pointer-events-none animate-bounce"
                     >
-                      <p className="text-[#d4a843] text-[10px] tracking-[0.3em] font-black uppercase">
-                        Your reply has been sent anonymously ✓
-                      </p>
+                      <ChevronDown size={24} />
                     </motion.div>
-                  ) : (
-                    <div className="w-full flex flex-col items-center gap-4">
-                      <div className="flex items-center gap-3 opacity-60">
-                        <span className="text-[9px] uppercase tracking-[0.5em] font-black text-white">💬 Send a reply anonymously</span>
-                      </div>
-                      
-                      <div className="w-full relative group">
-                        <textarea
-                          value={replyText}
-                          onChange={(e) => setReplyText(e.target.value.slice(0, 500))}
-                          placeholder="Type your response..."
-                          className="w-full bg-white/5 border border-white/10 rounded-sm p-4 text-sm text-white/80 placeholder:text-white/20 focus:outline-none focus:border-[#d4a843]/40 transition-all resize-none h-24"
-                        />
-                        <div className="absolute bottom-3 right-3 text-[8px] font-mono text-white/20 tracking-widest">
-                          {replyText.length}/500
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={submitReply}
-                        disabled={!replyText.trim() || isSendingReply}
-                        className="w-full py-4 bg-[#d4a843] text-black text-[10px] uppercase tracking-[0.3em] font-black hover:bg-[#f0ce80] disabled:opacity-20 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
-                      >
-                        {isSendingReply ? 'Dispatching...' : 'Send Reply'}
-                      </button>
-                    </div>
                   )}
-                </div>
+                </AnimatePresence>
+              </div>
 
-                <div className="flex flex-col items-center gap-8 opacity-80 mt-4">
-                  <p className="text-[9px] uppercase tracking-[0.4em] font-black text-white">Sent via NoNameNote System</p>
-                  <Link 
-                    to="/"
-                    className="group text-[11px] uppercase tracking-[0.5em] font-black text-white border-b border-white/20 pb-1 hover:border-white transition-all flex items-center gap-3"
+              {/* Reply Section */}
+              <div className="w-full max-w-[600px] flex flex-col items-center gap-6 bg-black/40 backdrop-blur-md p-8 rounded-sm border border-white/5 shadow-2xl">
+                {hasReplied ? (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-center py-4"
                   >
-                    Send your own note
-                    <span className="group-hover:translate-x-2 transition-transform">→</span>
-                  </Link>
-                </div>
+                    <p className="text-[#d4a843] text-[12px] tracking-[0.4em] font-black uppercase">
+                      Reply Sent ✓
+                    </p>
+                  </motion.div>
+                ) : (
+                  <div className="w-full flex flex-col gap-4">
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] uppercase tracking-[0.5em] font-black text-[#d3c5ad]">Reply</span>
+                    </div>
+                    
+                    <div className="relative group">
+                      <textarea
+                        value={replyText}
+                        onChange={(e) => setReplyText(e.target.value.slice(0, 500))}
+                        placeholder="Type your response..."
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-sm p-4 text-sm text-white/80 placeholder:text-white/20 focus:outline-none focus:border-[#d4a843]/40 transition-all resize-none h-32 font-serif"
+                      />
+                      <div className="absolute bottom-3 right-3 text-[8px] font-mono text-white/20 tracking-widest">
+                        {replyText.length}/500
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={submitReply}
+                      disabled={!replyText.trim() || isSendingReply}
+                      className="w-full py-4 bg-[#b89e7a] text-black text-[10px] uppercase tracking-[0.4em] font-black hover:bg-[#c9bda4] disabled:opacity-20 disabled:cursor-not-allowed transition-all active:scale-[0.98] shadow-lg"
+                    >
+                      {isSendingReply ? 'Dispatching...' : 'Send Reply'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col items-center gap-6 mt-12 pb-10">
+                <p className="text-[10px] uppercase tracking-[0.5em] font-black text-white/90">Sent via NoNameNote System</p>
+                <Link 
+                  to="/"
+                  className="group text-[12px] uppercase tracking-[0.6em] font-black text-[#b89e7a] border-b-2 border-[#b89e7a]/30 pb-2 hover:border-[#b89e7a] transition-all flex items-center gap-3"
+                >
+                  Send your own note
+                  <span className="group-hover:translate-x-2 transition-transform">→</span>
+                </Link>
               </div>
             </motion.div>
           )}
@@ -415,6 +400,127 @@ export default function NoteViewer() {
         .note-viewer-card-wrapper #note-card > div[contenteditable="false"]::-webkit-scrollbar-thumb {
           background: rgba(255,255,255,0.1);
           border-radius: 10px;
+        }
+
+        /* Envelope Animations Re-restored */
+        .envelope-wrapper {
+          position: relative;
+          width: 300px;
+          height: 200px;
+          perspective: 1000px;
+          cursor: pointer;
+        }
+        .envelope {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          background: #1a1a1a;
+          transform-style: preserve-3d;
+          transition: transform 1s;
+        }
+        .envelope-opening .envelope {
+          transform: translateY(100px) rotateX(10deg);
+        }
+        .envelope-back-flap {
+          position: absolute;
+          width: 100%;
+          height: 100%;
+          background: #1a1a1a;
+          clip-path: polygon(0 0, 50% 50%, 100% 0, 100% 100%, 0 100%);
+          z-index: 1;
+        }
+        .envelope-letter {
+          position: absolute;
+          width: 90%;
+          height: 80%;
+          background: #d3c5ad;
+          left: 5%;
+          top: 10%;
+          z-index: 2;
+          transition: transform 1s 0.5s;
+        }
+        .envelope-opening .envelope-letter {
+          transform: translateY(-150px);
+        }
+        .envelope-front-left {
+          position: absolute;
+          width: 100%;
+          height: 100%;
+          background: #2a2a2a;
+          clip-path: polygon(0 0, 50% 50%, 0 100%);
+          z-index: 3;
+        }
+        .envelope-front-right {
+          position: absolute;
+          width: 100%;
+          height: 100%;
+          background: #2a2a2a;
+          clip-path: polygon(100% 0, 50% 50%, 100% 100%);
+          z-index: 3;
+        }
+        .wax-seal-wrapper {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          z-index: 10;
+          width: 50px;
+          height: 50px;
+        }
+        .seal-main {
+          width: 100%;
+          height: 100%;
+          background: #b89e7a;
+          border-radius: 50%;
+          display: flex;
+          items-center: center;
+          justify-content: center;
+          color: black;
+          font-weight: bold;
+          font-family: serif;
+          box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+          transition: opacity 0.3s;
+        }
+        .envelope-opening .seal-main {
+          opacity: 0;
+        }
+        .shard {
+          position: absolute;
+          width: 15px;
+          height: 15px;
+          background: #b89e7a;
+          clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+          opacity: 0;
+        }
+        .envelope-opening .shard {
+          animation: shardOut 1s forwards;
+        }
+        @keyframes shardOut {
+          0% { opacity: 1; transform: translate(-50%, -50%) rotate(0deg); }
+          100% { opacity: 0; transform: var(--shard-dest) rotate(var(--shard-rot)); }
+        }
+        .dust-container {
+          position: fixed;
+          inset: 0;
+          pointer-events: none;
+          z-index: -1;
+        }
+        .dust {
+          position: absolute;
+          background: #b89e7a;
+          border-radius: 50%;
+          opacity: 0.2;
+          animation: dustFall linear infinite;
+        }
+        @keyframes dustFall {
+          0% { transform: translateY(-100px) rotate(0deg); opacity: 0; }
+          10% { opacity: 0.2; }
+          90% { opacity: 0.2; }
+          100% { transform: translateY(100vh) rotate(360deg); opacity: 0; }
+        }
+        @keyframes labelPulse {
+          0%, 100% { opacity: 0.3; transform: scale(1); }
+          50% { opacity: 0.1; transform: scale(0.98); }
         }
       `}} />
     </div>
