@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mail } from 'lucide-react';
+import { Mail, ChevronDown } from 'lucide-react';
 import { db } from './firebase';
 
 export default function NoteViewer() {
@@ -9,8 +9,26 @@ export default function NoteViewer() {
   const [viewingData, setViewingData] = useState<any>(null);
   const [isNoteLoading, setIsNoteLoading] = useState(true);
   const [status, setStatus] = useState<{ type: 'error' | null; message: string }>({ type: null, message: '' });
+  const [showScrollArrow, setShowScrollArrow] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
   
   const [animationStage, setAnimationStage] = useState<'idle' | 'animating' | 'revealed'>('idle');
+
+  // ... (audio logic remains same)
+  
+  useEffect(() => {
+    if (animationStage === 'revealed' && contentRef.current) {
+      const checkScroll = () => {
+        const el = contentRef.current?.querySelector('[contenteditable="false"]');
+        if (el) {
+          setShowScrollArrow(el.scrollHeight > el.clientHeight);
+        }
+      };
+      
+      const timer = setTimeout(checkScroll, 1000); // Wait for animation and rendering
+      return () => clearTimeout(timer);
+    }
+  }, [animationStage]);
 
   // Programmatic sound generator
   const playRustle = () => {
@@ -252,22 +270,43 @@ export default function NoteViewer() {
               className="fixed inset-0 z-10 w-full h-full flex items-center justify-center pointer-events-auto p-4"
               id="viewer-container"
             >
-              <div className="flex flex-col items-center gap-10 w-full max-w-4xl transition-transform duration-500 origin-center" style={{ transform: 'scale(var(--note-scale, 1))' }}>
+              <div className="flex flex-col items-center gap-6 w-full max-w-4xl transition-transform duration-500 origin-center" style={{ transform: 'scale(var(--note-scale, 1))' }}>
                 <div className="w-full text-center opacity-30">
                   <p className="text-[10px] uppercase tracking-[0.5em] font-black">— Secure Transmission Resolved —</p>
                 </div>
 
                 <div 
-                  className="w-full max-w-[620px] pointer-events-none shadow-[0_60px_120px_rgba(0,0,0,0.6)] rounded-sm overflow-hidden"
-                  dangerouslySetInnerHTML={{ 
-                    __html: (viewingData?.noteHTML || "")
-                      .replace(/contenteditable="true"/g, 'contenteditable="false"')
-                      .replace(/id="note-card"/g, '') 
-                  }}
-                />
+                  className="relative w-[600px] h-[450px] shadow-[0_60px_120px_rgba(0,0,0,0.6)] rounded-sm overflow-hidden group border border-white/5 bg-black"
+                  ref={contentRef}
+                >
+                  <div 
+                    className="w-full h-full note-viewer-card-wrapper"
+                    dangerouslySetInnerHTML={{ 
+                      __html: (viewingData?.noteHTML || "")
+                        .replace(/contenteditable="true"/g, 'contenteditable="false"')
+                    }}
+                  />
+                  
+                  {/* Bottom Fade Gradient */}
+                  <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black/60 via-black/10 to-transparent pointer-events-none z-10" />
+                  
+                  {/* Scroll Indicator Arrow */}
+                  <AnimatePresence>
+                    {showScrollArrow && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 0.5, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 text-white pointer-events-none animate-bounce"
+                      >
+                        <ChevronDown size={20} />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
 
                 {/* Reply Section */}
-                <div className="w-full max-w-[600px] flex flex-col items-center gap-6 mt-4">
+                <div className="w-full max-w-[600px] flex flex-col items-center gap-6">
                   <div className="w-full h-[1px] bg-white/10" />
                   
                   {hasReplied ? (
@@ -341,6 +380,32 @@ export default function NoteViewer() {
         #viewer-container [contenteditable] {
           outline: none !important;
           cursor: default !important;
+        }
+        .note-viewer-card-wrapper #note-card {
+          height: 100% !important;
+          min-height: 100% !important;
+          max-height: 100% !important;
+          width: 100% !important;
+          display: flex !important;
+          flex-direction: column !important;
+          padding: 2.5rem !important; /* Fixed padding to match editor look better at 1:1 scale */
+        }
+        .note-viewer-card-wrapper #note-card > div[contenteditable="false"] {
+          overflow-y: auto !important;
+          flex: 1 !important;
+          padding-right: 0.5rem;
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255,255,255,0.1) transparent;
+        }
+        .note-viewer-card-wrapper #note-card > div[contenteditable="false"]::-webkit-scrollbar {
+          width: 4px;
+        }
+        .note-viewer-card-wrapper #note-card > div[contenteditable="false"]::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .note-viewer-card-wrapper #note-card > div[contenteditable="false"]::-webkit-scrollbar-thumb {
+          background: rgba(255,255,255,0.1);
+          border-radius: 10px;
         }
       `}} />
     </div>
