@@ -4,7 +4,6 @@ import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 
 // Import API handlers
-import sendEmailHandler from "./api/send-email.js";
 import moderateHandler from "./api/moderate.js";
 import saveNoteHandler from "./api/save-note.js";
 import getNoteHandler from "./api/get-note.js";
@@ -23,7 +22,6 @@ async function startServer() {
   app.use(express.json());
 
   // API Routes
-  app.post("/api/send-email", sendEmailHandler);
   app.post("/api/moderate", moderateHandler);
   app.post("/api/save-note", saveNoteHandler);
   app.post("/api/get-note", getNoteHandler);

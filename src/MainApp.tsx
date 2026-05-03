@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import emailjs from '@emailjs/browser';
 import { 
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, 
   Send, Mail, CheckCircle2, AlertCircle, History, X, Check,
@@ -87,6 +88,11 @@ export default function MainApp() {
   const sendButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
+    const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
+    if (publicKey) {
+      emailjs.init(publicKey);
+    }
+    
     const rulesAccepted = localStorage.getItem('rulesAccepted');
     if (!rulesAccepted) {
       setShowRulesOverlay(true);
@@ -187,7 +193,7 @@ export default function MainApp() {
   const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
 
   useEffect(() => {
-    // emailjs removed - use backend
+    // Initialized in separate useEffect above
   }, []);
 
   const updateActiveFormats = useCallback(() => {
@@ -505,19 +511,18 @@ export default function MainApp() {
       const noteLink = window.location.origin + "/view/" + noteId;
 
       console.log('Step 3: Sending email...');
-      const sendResponse = await fetch('/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          to_email: recipient.trim(), 
-          note_link: noteLink 
-        })
-      });
-
-      if (!sendResponse.ok) {
-        const errData = await sendResponse.json();
-        console.error('API Error (Send Email):', sendResponse.status, errData);
-        throw new Error(errData.instruction || errData.error || 'Failed to send email');
+      try {
+        await emailjs.send(
+          import.meta.env.VITE_EMAILJS_SERVICE_ID,
+          import.meta.env.VITE_EMAILJS_TEMPLATE_ID,
+          {
+            to_email: recipient.trim(),
+            note_link: noteLink
+          }
+        );
+      } catch (emailError: any) {
+        console.error('EmailJS SDK Error:', emailError);
+        throw new Error(emailError?.text || 'Failed to send email via browser SDK');
       }
 
       if (sendButtonRef.current) {
