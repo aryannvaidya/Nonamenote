@@ -7,9 +7,14 @@ import {
 } from 'lucide-react';
 
 // Helper for relative time
-const getRelativeTime = (timestamp: number) => {
+const getRelativeTime = (timestamp: number | string | null) => {
+  if (!timestamp) return '';
+  const date = typeof timestamp === 'number' ? timestamp : new Date(timestamp).getTime();
   const now = Date.now();
-  const diff = Math.max(0, now - timestamp);
+  const diff = Math.max(0, now - date);
+  
+  if (isNaN(date)) return 'unknown';
+
   const mins = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);
@@ -19,9 +24,38 @@ const getRelativeTime = (timestamp: number) => {
   if (hours < 24) return `${hours}h ago`;
   return `${days}d ago`;
 };
+
+function normalizeText(text: string) {
+  return text
+    .replace(/3/g, 'e')
+    .replace(/4/g, 'a')
+    .replace(/1/g, 'i')
+    .replace(/0/g, 'o')
+    .replace(/5/g, 's')
+    .replace(/\$/g, 's')
+    .replace(/@/g, 'a')
+    .replace(/(\b\w\s){2,}/g, match => match.replace(/\s/g, ''))
+    .replace(/(\b\w\.){2,}/g, match => match.replace(/\./g, ''))
+    .replace(/[!|]/g, 'l')
+    .replace(/\*/g, 'u')
+    .toLowerCase();
+}
+
+async function scanWithAI(text: string) {
+  try {
+    const response = await fetch('/api/moderate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    const result = await response.json();
+    return result.toxic;
+  } catch (error) {
+    console.log('Moderation API failed silently:', error);
+    return false;
+  }
+}
 import confetti from 'canvas-confetti';
-import emailjs from '@emailjs/browser';
-import { db } from './firebase';
 import { Theme, THEMES, CHAR_LIMIT } from './types';
 
 export default function MainApp() {
@@ -78,30 +112,44 @@ export default function MainApp() {
       const log = updatedLogs[i];
       if (log.noteId) {
         try {
-          // Check Note Status (Opened/Seen)
-          const noteDoc = await db.collection('notes').doc(log.noteId).get();
-          const noteData = noteDoc.data();
+          // Get note status
+          const response = await fetch('/api/get-note', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ noteId: log.noteId })
+          });
+          if (!response.ok) continue;
           
-          if (noteData) {
-            const isOpened = noteData.opened || false;
-            const openedAtValue = noteData.openedAt?.toMillis ? noteData.openedAt.toMillis() : (noteData.openedAt || null);
+          const { note } = await response.json();
+          
+          if (note) {
+            const isOpened = note.opened || false;
+            const openedAtValue = note.openedAt ? new Date(note.openedAt).getTime() : null;
             
             if (log.opened !== isOpened || log.openedAt !== openedAtValue) {
               updatedLogs[i] = { ...updatedLogs[i], opened: isOpened, openedAt: openedAtValue };
               changed = true;
             }
-          }
 
-          const repliesSnap = await db.collection('notes').doc(log.noteId).collection('replies').get();
-          const replyData = repliesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-          const unreadCount = replyData.filter((r: any) => !r.read).length;
-          
-          if (log.hasUnread !== (unreadCount > 0) || log.replyCount !== replyData.length) {
-            updatedLogs[i] = { ...updatedLogs[i], hasUnread: unreadCount > 0, replyCount: replyData.length };
-            changed = true;
+            // Get replies from separate endpoint (Step 5)
+            const repliesRes = await fetch('/api/get-replies', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ noteId: log.noteId })
+            });
+            
+            if (repliesRes.ok) {
+              const { replies: repliesData } = await repliesRes.json();
+              const unreadCount = (repliesData || []).filter((r: any) => !r.read).length;
+              
+              if (log.hasUnread !== (unreadCount > 0) || log.replyCount !== repliesData?.length) {
+                updatedLogs[i] = { ...updatedLogs[i], hasUnread: unreadCount > 0, replyCount: repliesData?.length };
+                changed = true;
+              }
+              
+              setReplies(prev => ({ ...prev, [log.noteId!]: repliesData || [] }));
+            }
           }
-          
-          setReplies(prev => ({ ...prev, [log.noteId!]: replyData }));
         } catch (e) {
           console.error("Failed to check status for", log.noteId, e);
         }
@@ -135,7 +183,7 @@ export default function MainApp() {
   const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
 
   useEffect(() => {
-    emailjs.init(import.meta.env.VITE_EMAILJS_PUBLIC_KEY);
+    // emailjs removed - use backend
   }, []);
 
   const updateActiveFormats = useCallback(() => {
@@ -395,35 +443,32 @@ export default function MainApp() {
     setIsSending(true);
     setStatus({ type: null, message: '' });
 
-    // Validate environment variables
-    const requiredEnvVars = [
-      'VITE_FIREBASE_API_KEY',
-      'VITE_EMAILJS_PUBLIC_KEY',
-      'VITE_EMAILJS_SERVICE_ID',
-      'VITE_EMAILJS_TEMPLATE_ID'
+    // Validate environment (handled by server now, but keep some basic frontend sanity)
+    const requiredEnvMessage = "The application server needs to be configured with the necessary tokens.";
+
+    const plainText = (editorRef.current?.innerText || "").replace(/\u200B/g, "").trim();
+    const normalizedText = normalizeText(plainText);
+    const bannedWords = [
+      'fuck', 'shit', 'bitch', 'asshole', 'dick', 'pussy', 'slut', 'whore', 'bastard', 'cunt', 'kill you', 'murder', 'rape', 'death threat', 'torture', 'terrorist', 'suicide', 'pedophile', 'nazi',
+      'bc', 'mc', 'bhenchod', 'madarchod', 'bhosi', 'bhosdike', 'chutiya', 'gaandu', 'lauda', 'lavda', 'randi', 'saala', 'kamina', 'harami', 'bsdk', 'marna', 'balatkar', 'kalle', 'katle', 
+      'dushkarm', 'kutte', 'haramzaade', 'lowde', 'lund', 'tatte', 'chipkali', 'chakke', 'hijra', 'beyimaan', 'saali', 'kamini', 'balatkaar', 'balatyaar', 'dushkarm',
+      'गाली', 'चूतिया', 'भोसड़ीके', 'मदरचोद', 'बहनचोद', 'साला', 'कमीना', 'हरामी', 'बलात्कार', 'दुष्कर्म', 'मार डालूंगा', 'कुत्ते', 'हरामजादे', 'रंडी'
     ];
-    
-    const missingVars = requiredEnvVars.filter(v => !import.meta.env[v]);
-    if (missingVars.length > 0) {
-      setStatus({ 
-        type: 'error', 
-        message: `⚠️ Missing configuration: ${missingVars.join(', ')}. Please check your environment variables.` 
-      });
+
+    const containsBanned = bannedWords.some(word => normalizedText.includes(word));
+    if (containsBanned) {
+      setStatus({ type: 'error', message: "⚠️ Your message contains inappropriate content and cannot be sent." });
       setIsSending(false);
       return;
     }
 
-    const plainText = (editorRef.current?.innerText || "").replace(/\u200B/g, "").trim().toLowerCase();
-    const bannedWords = [
-      'fuck', 'shit', 'bitch', 'asshole', 'dick', 'pussy', 'slut', 'whore', 'bastard', 'cunt', 'kill you', 'murder', 'rape', 'death threat', 'torture', 'terrorist', 'suicide', 'pedophile', 'nazi',
-      'bc', 'mc', 'bhenchod', 'madarchod', 'bhosi', 'bhosdike', 'chutiya', 'gaandu', 'lauda', 'lavda', 'randi', 'saala', 'kamina', 'harami', 'bsdk', 'marna', 'balatkar', 'kalle', 'katle', 
-      'dushkarm', 'kutte', 'haramzaade', 'lowde', 'lund', 'tatte', 'chipkali', 'chakke', 'hijra', 'beyimaan', 'saali', 'kamini', 'balatkaar', 'balatkart', 'dushkarm',
-      'गाली', 'चूतिया', 'भोसड़ीके', 'मदरचोद', 'बहनचोद', 'साला', 'कमीना', 'हरामी', 'बलात्कार', 'दुष्कर्म', 'मार डालूंगा', 'कुत्ते', 'हरामजादे', 'रंडी'
-    ];
-
-    const containsBanned = bannedWords.some(word => plainText.includes(word));
-    if (containsBanned) {
-      setStatus({ type: 'error', message: "⚠️ Your message contains inappropriate content and cannot be sent." });
+    setStatus({ type: null, message: '🔍 Scanning message for safety...' });
+    const isToxic = await scanWithAI(plainText);
+    if (isToxic) {
+      setStatus({ 
+        type: 'error', 
+        message: "⚠️ Your message was flagged for harmful content and cannot be sent.\nNoNameNote does not allow abusive, threatening or inappropriate messages." 
+      });
       setIsSending(false);
       return;
     }
@@ -433,24 +478,35 @@ export default function MainApp() {
       const noteCard = document.getElementById('note-card');
       const noteHTML = noteCard?.outerHTML || "";
       
-      const docRef = await db.collection("notes").add({
-        noteHTML: noteHTML,
-        theme_bg: selectedTheme.bgClass || "#0d0d0d",
-        timestamp: new Date(),
-        opened: false
+      const saveResponse = await fetch('/api/save-note', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          noteHTML,
+          theme_bg: selectedTheme.bgClass || "#0d0d0d",
+          timestamp: Date.now()
+        })
       });
 
-      setStatus({ type: null, message: 'Routing: Dispatching secure link...' });
-      const noteLink = window.location.origin + "/view/" + docRef.id;
+      if (!saveResponse.ok) throw new Error('Failed to save note');
+      const { noteId } = await saveResponse.json();
 
-      await emailjs.send(
-        import.meta.env.VITE_EMAILJS_SERVICE_ID,
-        import.meta.env.VITE_EMAILJS_TEMPLATE_ID,
-        {
-          to_email: recipient.trim(),
-          note_link: noteLink
-        }
-      );
+      setStatus({ type: null, message: 'Routing: Dispatching secure link...' });
+      const noteLink = window.location.origin + "/view/" + noteId;
+
+      const sendResponse = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          to_email: recipient.trim(), 
+          note_link: noteLink 
+        })
+      });
+
+      if (!sendResponse.ok) {
+        const errData = await sendResponse.json();
+        throw new Error(errData.instruction || errData.error || 'Failed to send email');
+      }
 
       if (sendButtonRef.current) {
         setButtonRect(sendButtonRef.current.getBoundingClientRect());
@@ -476,7 +532,7 @@ export default function MainApp() {
       setStatus({ type: 'success', message: 'Note Delivered! Your message has been dispatched.' });
       const now = Date.now().toString();
       localStorage.setItem('lastSentTime', now);
-      saveToLogs(recipient, content, docRef.id); // Save successful transmission with ID
+      saveToLogs(recipient, content, noteId); // Updated with backend ID
       setNextAvailableTime(getTimeRemaining()); // Provide immediate UI lock
       if (editorRef.current) editorRef.current.innerHTML = '';
       setContent('');
@@ -570,8 +626,8 @@ export default function MainApp() {
             </div>
           </div>
 
-          <AnimatePresence mode="wait">
-            <motion.div id="note-card" key={selectedTheme.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={`min-h-[420px] p-10 md:p-16 relative flex flex-col transition-all duration-1000 ${selectedTheme.paperClass} ${selectedTheme.fontClass}`}>
+          <AnimatePresence>
+            <motion.div id="note-card" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={`min-h-[420px] p-10 md:p-16 relative flex flex-col transition-all duration-1000 ${selectedTheme.paperClass} ${selectedTheme.fontClass}`}>
               <div className="flex justify-between border-b border-current opacity-20 pb-2 mb-10">
                 <span className="font-telegraph text-[10px] uppercase italic">Dispatch No. {Math.floor(Math.random() * 999)}-X</span>
                 <span className="font-telegraph text-[10px] uppercase">Date: {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}</span>
@@ -707,9 +763,14 @@ export default function MainApp() {
 
                               // Fetch full note data for theme and content
                               try {
-                                const noteSnap = await db.collection('notes').doc(log.noteId).get();
-                                if (noteSnap.exists) {
-                                  setActiveNoteData(noteSnap.data());
+                                const response = await fetch('/api/get-note', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ noteId: log.noteId })
+                                });
+                                if (response.ok) {
+                                  const { note } = await response.json();
+                                  setActiveNoteData(note);
                                 }
                               } catch (e) {
                                 console.error("Error fetching note details", e);
@@ -721,7 +782,7 @@ export default function MainApp() {
                           <div className="flex justify-between items-center mb-1">
                             <span className="text-[10px] font-black text-[#b89e7a] tracking-wider break-all">{log.recipient}</span>
                             <span className="text-[8px] text-white/20 font-mono flex-shrink-0">
-                              {new Date(log.timestamp).toLocaleDateString()}
+                              {!isNaN(new Date(log.timestamp).getTime()) ? new Date(log.timestamp).toLocaleDateString() : 'unknown'}
                             </span>
                           </div>
                           
@@ -737,7 +798,7 @@ export default function MainApp() {
                               <span className={`text-[7px] font-black tracking-[0.2em] uppercase px-1.5 py-0.5 rounded-xs ${log.opened ? 'bg-green-500/10 text-green-400' : 'bg-blue-500/10 text-blue-400'}`}>
                                 {log.opened ? 'Seen' : 'Delivered'}
                               </span>
-                              {log.opened && log.openedAt && (
+                              {log.opened && log.openedAt && !isNaN(new Date(log.openedAt).getTime()) && (
                                 <span className="text-[7px] text-white/20 font-mono italic">
                                   {new Date(log.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                 </span>
@@ -793,9 +854,9 @@ export default function MainApp() {
                           <span className={`text-[7px] font-black uppercase tracking-widest px-1 py-0.5 rounded-sm ${logs.find(l => l.noteId === activeLogThread)?.opened ? 'text-green-400' : 'text-blue-400'}`}>
                             ● {logs.find(l => l.noteId === activeLogThread)?.opened ? 'Seen' : 'Delivered'}
                           </span>
-                          {logs.find(l => l.noteId === activeLogThread)?.openedAt && (
+                          {logs.find(l => l.noteId === activeLogThread)?.openedAt && !isNaN(new Date(logs.find(l => l.noteId === activeLogThread)!.openedAt!).getTime()) && (
                             <span className="text-[7px] text-white/20 font-mono italic">
-                              at {new Date(logs.find(l => l.noteId === activeLogThread)!.openedAt!).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                              at {new Date(logs.find(l => l.noteId === activeLogThread)!.openedAt!).toLocaleString([], { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })}
                             </span>
                           )}
                         </div>
@@ -813,11 +874,21 @@ export default function MainApp() {
                         <div className="text-center py-6 opacity-20 italic text-xs">Awaiting anonymous response...</div>
                       ) : (
                         replies[activeLogThread].map((reply: any) => {
-                          const replyTime = reply.timestamp?.toMillis ? reply.timestamp.toMillis() : (reply.timestamp?.seconds ? reply.timestamp.seconds * 1000 : Date.now());
+                          const replyTimeRaw = reply.timestamp;
+                          const replyTime = typeof replyTimeRaw === 'number' 
+                            ? replyTimeRaw 
+                            : (replyTimeRaw?.seconds ? replyTimeRaw.seconds * 1000 : new Date(replyTimeRaw).getTime());
                           
                           // Mark as read in Firestore if needed
                           if (!reply.read) {
-                            db.collection('notes').doc(activeLogThread).collection('replies').doc(reply.id).update({ read: true });
+                            fetch('/api/mark-reply-read', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ 
+                                noteId: activeLogThread,
+                                replyId: reply.id
+                              })
+                            }).catch(err => console.error("Failed to mark read", err));
                           }
                           
                           return (

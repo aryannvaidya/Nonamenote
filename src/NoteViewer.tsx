@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mail, ChevronDown } from 'lucide-react';
-import { db } from './firebase';
 
 export default function NoteViewer() {
   const { id } = useParams<{ id: string }>();
@@ -86,11 +85,16 @@ export default function NoteViewer() {
     
     setIsSendingReply(true);
     try {
-      await db.collection('notes').doc(id).collection('replies').add({
-        message: replyText,
-        timestamp: new Date(),
-        read: false
+      const response = await fetch('/api/save-reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          noteId: id,
+          message: replyText
+        })
       });
+      
+      if (!response.ok) throw new Error('Failed to send reply');
       
       const replied = JSON.parse(localStorage.getItem('repliedNotes') || '[]');
       replied.push(id);
@@ -107,11 +111,16 @@ export default function NoteViewer() {
   const fetchNote = async (noteId: string) => {
     setIsNoteLoading(true);
     try {
-      const doc = await db.collection('notes').doc(noteId).get();
-      if (!doc.exists) {
+      const response = await fetch('/api/get-note', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ noteId })
+      });
+      if (!response.ok) {
         setStatus({ type: 'error', message: "This note has expired or doesn't exist" });
       } else {
-        setViewingData(doc.data());
+        const { note } = await response.json();
+        setViewingData(note);
       }
     } catch (err) {
       console.error(err);
@@ -131,15 +140,6 @@ export default function NoteViewer() {
     setTimeout(() => {
       setAnimationStage('revealed');
     }, 3800);
-
-    try {
-      await db.collection('notes').doc(id).update({ 
-        opened: true,
-        openedAt: new Date()
-      });
-    } catch (e) {
-      console.error("Failed to update opened state", e);
-    }
   };
 
   if (isNoteLoading) {
