@@ -49,9 +49,13 @@ async function scanWithAI(text: string) {
       body: JSON.stringify({ text })
     });
     const result = await response.json();
+    if (!response.ok) {
+      console.error('API Error (Moderation):', response.status, result);
+      return result.toxic || false;
+    }
     return result.toxic;
   } catch (error) {
-    console.log('Moderation API failed silently:', error);
+    console.error('Moderation fetch failed:', error);
     return false;
   }
 }
@@ -462,6 +466,7 @@ export default function MainApp() {
       return;
     }
 
+    console.log('Step 1: Starting moderation check...');
     setStatus({ type: null, message: '🔍 Scanning message for safety...' });
     const isToxic = await scanWithAI(plainText);
     if (isToxic) {
@@ -478,6 +483,7 @@ export default function MainApp() {
       const noteCard = document.getElementById('note-card');
       const noteHTML = noteCard?.outerHTML || "";
       
+      console.log('Step 2: Saving to Firebase...');
       const saveResponse = await fetch('/api/save-note', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -488,12 +494,17 @@ export default function MainApp() {
         })
       });
 
-      if (!saveResponse.ok) throw new Error('Failed to save note');
-      const { noteId } = await saveResponse.json();
+      const saveData = await saveResponse.json();
+      if (!saveResponse.ok) {
+        console.error('API Error (Save Note):', saveResponse.status, saveData);
+        throw new Error(saveData.message || saveData.error || 'Failed to save note');
+      }
+      const { noteId } = saveData;
 
       setStatus({ type: null, message: 'Routing: Dispatching secure link...' });
       const noteLink = window.location.origin + "/view/" + noteId;
 
+      console.log('Step 3: Sending email...');
       const sendResponse = await fetch('/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -505,6 +516,7 @@ export default function MainApp() {
 
       if (!sendResponse.ok) {
         const errData = await sendResponse.json();
+        console.error('API Error (Send Email):', sendResponse.status, errData);
         throw new Error(errData.instruction || errData.error || 'Failed to send email');
       }
 
@@ -537,9 +549,12 @@ export default function MainApp() {
       if (editorRef.current) editorRef.current.innerHTML = '';
       setContent('');
       setRecipient('');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Action Error:', error);
-      setStatus({ type: 'error', message: 'Failed to complete action. Please try again later.' });
+      setStatus({ 
+        type: 'error', 
+        message: error.message || 'Failed to complete action. Please try again later.' 
+      });
     } finally {
       setIsSending(false);
     }
