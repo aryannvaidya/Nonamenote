@@ -88,11 +88,6 @@ export default function MainApp() {
   const sendButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
-    if (publicKey) {
-      emailjs.init(publicKey);
-    }
-    
     const rulesAccepted = localStorage.getItem('rulesAccepted');
     if (!rulesAccepted) {
       setShowRulesOverlay(true);
@@ -518,7 +513,8 @@ export default function MainApp() {
           {
             to_email: recipient.trim(),
             note_link: noteLink
-          }
+          },
+          import.meta.env.VITE_EMAILJS_PUBLIC_KEY
         );
       } catch (emailError: any) {
         console.error('EmailJS SDK Error:', emailError);
