@@ -14,11 +14,13 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Note not found' });
     }
 
-    // Update opened status as requested in Step 3
-    await docRef.update({ 
-      opened: true,
-      openedAt: new Date()
-    });
+    // Update opened status only if explicitly requested (e.g. by recipient revealing the note)
+    if (req.body.markSeen === true) {
+      await docRef.update({ 
+        opened: true,
+        openedAt: new Date()
+      });
+    }
 
     const data = doc.data();
     // Normalize timestamps for frontend

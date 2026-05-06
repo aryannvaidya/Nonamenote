@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
 @layer utilities {
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
@@ -38,27 +50,28 @@
   }
   blockquote {
     position: relative;
-    padding: 1rem 1.5rem;
-    margin: 1.5rem 0;
+    padding: 0.5rem 1.5rem;
+    margin: 1rem 0;
     font-style: italic;
     opacity: 0.9;
     line-height: 1.6;
-    background: rgba(255, 255, 255, 0.05);
-    border-left: 3px solid rgba(184, 158, 122, 0.3);
-    display: inline-block;
+    display: block;
+    width: fit-content;
     max-width: 100%;
   }
   blockquote::before {
     content: '“';
     font-size: 1.2em;
-    margin-right: 0.2em;
+    margin-right: 0.2rem;
     opacity: 0.4;
+    vertical-align: top;
   }
   blockquote::after {
     content: '”';
     font-size: 1.2em;
-    margin-left: 0.2em;
+    margin-left: 0.2rem;
     opacity: 0.4;
+    vertical-align: bottom;
   }
 }
 
@@ -399,4 +412,43 @@
   --font-serif-elegant: "Crimson Pro", serif;
   --font-telegraph: "JetBrains Mono", monospace;
   --font-special-elite: "Special Elite", system-ui, sans-serif;
+}
+
+@layer components {
+  .timeline-card {
+    position: relative !important;
+    overflow: visible !important;
+  }
+
+  /* Notch background */
+  .timeline-card::before {
+    content: '';
+    position: absolute;
+    left: -8px;
+    top: 32px;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-top: 8px solid transparent;
+    border-bottom: 8px solid transparent;
+    border-right: 8px solid #1c1c1c;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  /* Notch border */
+  .timeline-card::after {
+    content: '';
+    position: absolute;
+    left: -10px;
+    top: 32px;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-top: 9px solid transparent;
+    border-bottom: 9px solid transparent;
+    border-right: 9px solid rgba(212, 168, 67, 0.2);
+    z-index: 9;
+    pointer-events: none;
+  }
 }

@@ -1,71 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mail, ChevronDown } from 'lucide-react';
+import { ShieldCheck, ArrowLeft, ArrowRight } from 'lucide-react';
 
 export default function NoteViewer() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [viewingData, setViewingData] = useState<any>(null);
   const [isNoteLoading, setIsNoteLoading] = useState(true);
   const [status, setStatus] = useState<{ type: 'error' | null; message: string }>({ type: null, message: '' });
-  const [showScrollArrow, setShowScrollArrow] = useState(false);
-  const contentRef = useRef<HTMLDivElement>(null);
-  
   const [animationStage, setAnimationStage] = useState<'idle' | 'animating' | 'revealed'>('idle');
-
-  // ... (audio logic remains same)
-  
-  useEffect(() => {
-    if (animationStage === 'revealed' && contentRef.current) {
-      const checkScroll = () => {
-        const el = contentRef.current?.querySelector('[contenteditable="false"]');
-        if (el) {
-          setShowScrollArrow(el.scrollHeight > el.clientHeight);
-        }
-      };
-      
-      const timer = setTimeout(checkScroll, 1000); // Wait for animation and rendering
-      return () => clearTimeout(timer);
-    }
-  }, [animationStage]);
-
-  // Programmatic sound generator
-  const playRustle = () => {
-    try {
-      const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContextClass) return;
-      
-      const ctx = new AudioContextClass();
-      const buffer = ctx.createBuffer(1, ctx.sampleRate * 0.4, ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-      
-      for (let i = 0; i < data.length; i++) {
-        // High frequency noise with exponential decay for a rustle effect
-        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.12)) * 0.5;
-      }
-      
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'highpass';
-      filter.frequency.value = 1200;
-      
-      const gainNode = ctx.createGain();
-      gainNode.gain.setValueAtTime(0, ctx.currentTime);
-      gainNode.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.05);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
-      
-      source.connect(filter);
-      filter.connect(gainNode);
-      gainNode.connect(ctx.destination);
-      
-      source.start();
-    } catch (e) {
-      console.error("Audio generation failed", e);
-    }
-  };
-
+  const [showReplyPanel, setShowReplyPanel] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [isSendingReply, setIsSendingReply] = useState(false);
   const [hasReplied, setHasReplied] = useState(false);
@@ -80,11 +25,50 @@ export default function NoteViewer() {
     }
   }, [id]);
 
-  const submitReply = async () => {
-    if (!replyText.trim() || isSendingReply || hasReplied || !id) return;
-    
-    setIsSendingReply(true);
+  const fetchNote = async (noteId: string) => {
+    setIsNoteLoading(true);
     try {
+      const response = await fetch('/api/get-note', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ noteId, markSeen: false })
+      });
+      if (!response.ok) {
+        setStatus({ type: 'error', message: "This note has expired or doesn't exist" });
+      } else {
+        const { note } = await response.json();
+        setViewingData(note);
+      }
+    } catch (err: any) {
+      setStatus({ type: 'error', message: "Error fetching note" });
+    } finally {
+      setIsNoteLoading(false);
+    }
+  };
+
+  const startAnimation = async () => {
+    if (!viewingData || !id || animationStage !== 'idle') return;
+    
+    setAnimationStage('animating');
+    
+    // Mark as seen in background
+    fetch('/api/get-note', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ noteId: id, markSeen: true })
+    }).catch(e => console.warn("Background mark seen failed:", e));
+
+    // Wait for the simple "reveal" 
+    setTimeout(() => {
+      setAnimationStage('revealed');
+    }, 800);
+  };
+
+  const submitReply = async () => {
+    try {
+      if (!replyText?.trim() || isSendingReply || hasReplied || !id) return;
+      
+      setIsSendingReply(true);
       const response = await fetch('/api/save-reply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -101,6 +85,7 @@ export default function NoteViewer() {
       localStorage.setItem('repliedNotes', JSON.stringify(replied));
       setHasReplied(true);
       setReplyText('');
+      setShowReplyPanel(false);
     } catch (e) {
       console.error("Failed to send reply", e);
     } finally {
@@ -108,419 +93,302 @@ export default function NoteViewer() {
     }
   };
 
-  const fetchNote = async (noteId: string) => {
-    setIsNoteLoading(true);
-    try {
-      const response = await fetch('/api/get-note', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ noteId })
-      });
-      if (!response.ok) {
-        setStatus({ type: 'error', message: "This note has expired or doesn't exist" });
-      } else {
-        const { note } = await response.json();
-        setViewingData(note);
-      }
-    } catch (err) {
-      console.error(err);
-      setStatus({ type: 'error', message: "Error fetching note" });
-    } finally {
-      setIsNoteLoading(false);
-    }
-  };
-
-  const startAnimation = async () => {
-    if (!viewingData || !id || animationStage !== 'idle') return;
-    
-    playRustle();
-    setAnimationStage('animating');
-    
-    // Total sequence ~4s
-    setTimeout(() => {
-      setAnimationStage('revealed');
-    }, 3800);
-  };
-
   if (isNoteLoading) {
     return (
-      <div className="fixed inset-0 bg-[#000] flex items-center justify-center z-[9999]">
-        <div className="w-12 h-12 border-4 border-white/20 border-t-[#b89e7a] rounded-full animate-spin" />
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+        <div className="text-[#d4a843] font-mono tracking-widest text-sm animate-pulse uppercase">
+          Initializing Connection...
+        </div>
       </div>
     );
   }
 
   if (status.type === 'error') {
     return (
-      <div className="fixed inset-0 bg-[#000] flex flex-col items-center justify-center p-8 text-center z-[9999] overflow-hidden">
-        <div className="mb-10 text-9xl">✉️</div>
-        <h2 className="font-sans text-white text-2xl md:text-3xl mb-10 tracking-tight font-light border-0 mt-0">
-          {status.message}
-        </h2>
-        <Link 
-          to="/"
-          className="px-10 py-5 bg-white text-black font-bold uppercase tracking-[0.2em] text-xs hover:bg-gray-200 transition-all rounded-sm"
-        >
-          Send your own note →
+      <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center p-6 text-center">
+        <div className="text-[#d4a843] text-4xl mb-6">⚠️</div>
+        <div className="text-white/60 font-mono text-sm tracking-widest mb-8 uppercase max-w-xs">{status.message}</div>
+        <Link to="/" className="text-[#d4a843] font-mono text-[10px] uppercase tracking-[0.5em] border border-[#d4a843]/30 px-6 py-3 hover:bg-[#d4a843]/10 transition-colors">
+          Return Home
         </Link>
       </div>
     );
   }
 
-  const isThemeBgClass = viewingData?.theme_bg?.startsWith('bg-');
-  const particles = Array.from({ length: 25 });
+  // Date formatting with robust fallback
+  const dateStr = (function() {
+    try {
+      const rawTs = viewingData?.timestamp || viewingData?.createdAt;
+      if (!rawTs) return null;
+      
+      // If it's a string (ISO), number, or Date object
+      const dateObj = new Date(rawTs);
+      if (isNaN(dateObj.getTime())) return null;
+
+      return dateObj.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric'
+      }).toUpperCase();
+    } catch(e) {
+      console.error("Date formatting error:", e);
+      return null;
+    }
+  })();
+
+  const themeBg = viewingData?.theme_bg || '#000000';
+  const isThemeBgClass = themeBg.startsWith('bg-');
 
   return (
-    <div className="min-h-screen bg-black text-[#d3c5ad] selection:bg-[#b89e7a] selection:text-black overflow-y-auto custom-scrollbar relative">
-      {/* Background Transition */}
-      <AnimatePresence>
-        {animationStage === 'revealed' && (
+    <div className={`min-h-screen relative overflow-x-hidden ${animationStage === 'revealed' ? (isThemeBgClass ? themeBg : '') : 'bg-[#0a0a0a]'}`} style={!isThemeBgClass && animationStage === 'revealed' ? { backgroundColor: themeBg } : {}}>
+      
+      {/* Recipient View Main Container */}
+      <AnimatePresence mode="wait">
+        {animationStage !== 'revealed' ? (
           <motion.div 
+            key="envelope-view"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 1.2 }}
-            className={`fixed inset-0 w-full h-full z-0 transition-colors duration-1000 ${isThemeBgClass ? viewingData.theme_bg : ''}`}
-            style={!isThemeBgClass ? { backgroundColor: viewingData?.theme_bg || '#000' } : {}}
-          />
+            exit={{ opacity: 0, scale: 0.95, filter: 'blur(20px)' }}
+            className="fixed inset-0 flex flex-col items-center justify-center p-6"
+            onClick={startAnimation}
+          >
+            {/* Top Navigation */}
+            <div className="absolute top-8 left-8 right-8 flex items-center justify-between pointer-events-auto">
+              <button onClick={() => navigate('/')} className="text-white/40 hover:text-white transition-colors">
+                <ArrowLeft size={24} />
+              </button>
+              <div className="text-white/20 font-mono text-[10px] tracking-[0.6em] uppercase translate-x-[12px]">Encrypted</div>
+              <div className="w-6" /> {/* Spacer */}
+            </div>
+
+            {/* Envelope Illustration */}
+            <div className="relative w-full max-w-[340px] aspect-[4/3] group cursor-pointer">
+              {/* Envelope Body */}
+              <div className="absolute inset-0 bg-[#1c1c1c] rounded-2xl border border-white/5 shadow-2xl overflow-hidden transition-transform duration-500 group-hover:scale-[1.02]">
+                <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 50% 50%, #d4a843 0%, transparent 100%)', filter: 'blur(40px)' }} />
+                {/* Envelope fold lines (using clip-path) */}
+                <div className="absolute inset-0 bg-white/5" style={{ clipPath: 'polygon(0 0, 100% 0, 50% 50%)' }} />
+                <div className="absolute inset-0 bg-white/[0.02]" style={{ clipPath: 'polygon(0 0, 0 100%, 50% 50%)' }} />
+                <div className="absolute inset-0 bg-white/[0.02]" style={{ clipPath: 'polygon(100% 0, 100% 100%, 50% 50%)' }} />
+                
+                {/* Wax Seal */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 bg-[#d4a843] rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(0,0,0,0.5)] z-10 transition-transform group-hover:scale-110">
+                  <span className="text-[#1c1c1c] font-serif text-3xl font-medium">N</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Labels */}
+            <div className="mt-16 text-center w-full max-w-full overflow-hidden">
+              <h1 className="text-white font-serif text-2xl sm:text-3xl md:text-5xl tracking-[0.1em] sm:tracking-[0.4em] uppercase leading-tight md:leading-relaxed mb-4 px-4 break-words">
+                Private<br />Transmission
+              </h1>
+              <p className="text-[#d4a843]/60 font-mono text-[10px] uppercase tracking-[0.3em] animate-pulse">
+                Tap to reveal the message
+              </p>
+            </div>
+
+            {/* Footer Labels */}
+            <div className="absolute bottom-10 left-0 right-0 flex flex-col items-center gap-4">
+              <div className="flex items-center gap-3">
+                <div className="h-[1px] w-12 bg-white/10" />
+                <div className="text-white/30 font-mono text-[9px] tracking-[0.3em] uppercase">Nonamenote Archive</div>
+                <div className="h-[1px] w-12 bg-white/10" />
+              </div>
+              <p className="text-white/10 text-[8px] uppercase tracking-[0.2em] max-w-[240px] text-center leading-relaxed">
+                Identity protected via end-to-end zero-knowledge protocol
+              </p>
+            </div>
+          </motion.div>
+        ) : (
+          <div key="revealed-view" className="w-full flex flex-col items-center px-4 py-8 md:py-12 box-border min-h-screen overflow-hidden">
+              {/* Header outside the paper */}
+            <div className="w-full max-w-4xl flex justify-end mb-2 pr-2">
+               <span className="font-mono text-[10px] md:text-sm tracking-[0.2em] uppercase text-white/40">
+                  DATE: {dateStr || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase()}
+                </span>
+            </div>
+
+            {/* Note Content Area (No paper background) */}
+            <motion.div 
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8 }}
+              className="relative w-full max-w-4xl flex flex-col box-border min-h-[400px]"
+            >
+              {/* Stamp (if present in the data) */}
+              <div 
+                id="viewer-stamp-container" 
+                className="absolute top-0 right-0 pointer-events-none opacity-60 z-20"
+                dangerouslySetInnerHTML={{ __html: viewingData?.stampHTML || '' }}
+              />
+
+              {/* Note Content - Touching boundaries as requested */}
+              <div 
+                className="flex-1 w-full overflow-hidden py-4 selection:bg-[#d4a843]/30"
+                style={{ 
+                  fontFamily: viewingData?.font_family || 'serif',
+                }}
+              >
+                <div 
+                   className="note-content-rendered px-0 w-full text-white"
+                   dangerouslySetInnerHTML={{ 
+                     __html: (viewingData?.noteHTML || "")
+                       .replace(/contenteditable="true"/g, 'contenteditable="false"')
+                       .replace(/<a\b[^>]*>(.*?)<\/a>/gi, '<span class="disabled-link">$1</span>')
+                       .replace(/Dispatch No\.[^]*?\d{2}-\d{3}-[A-Z]/gi, '')
+                       .replace(/Date:[^]*?\d{2}\s[A-Z][a-z]+\s\d{4}/gi, '')
+                   }}
+                />
+              </div>
+
+              {/* Security Warning */}
+              <div className="flex items-center gap-3 px-4 py-4 bg-white/5 border border-white/10 rounded-xl mb-8">
+                <ShieldCheck size={18} className="text-[#d4a843] shrink-0" />
+                <p className="text-[10px] sm:text-[11px] font-medium leading-relaxed text-white/50 tracking-wide">
+                  <span className="text-[#d4a843] font-bold uppercase mr-1">Security Notice:</span>
+                  External links are deactivated for your protection. Opening untrusted web addresses from anonymous sources is a security risk.
+                </p>
+              </div>
+
+              {/* Unified Footer Actions - Stacked closely as requested */}
+              <div className="pb-16 pt-8 border-t border-white/10 flex flex-col items-center gap-6">
+                <button 
+                  onClick={() => setShowReplyPanel(true)}
+                  className="group flex items-center gap-3 text-sm font-medium tracking-[0.3em] uppercase border-b-2 border-[#d4a843] pb-1 hover:opacity-80 transition-all font-mono text-[#d4a843]"
+                  style={{ borderColor: '#d4a843' }}
+                >
+                  Respond anonymously <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                </button>
+
+                <button 
+                    onClick={() => navigate('/')}
+                    className="text-[12px] font-bold tracking-[0.4em] uppercase font-mono text-white hover:text-black hover:bg-white border border-white/20 px-8 py-4 rounded-full transition-all"
+                >
+                    SEND YOUR OWN NOTES ANONYMOUS
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
-      <div className={`relative w-full min-h-screen flex flex-col items-center justify-center p-4 ${animationStage === 'revealed' ? 'pt-20 pb-20' : ''}`}>
-        <AnimatePresence mode="wait">
-          {animationStage !== 'revealed' ? (
+      {/* Reply Modal/Panel */}
+      <AnimatePresence>
+        {showReplyPanel && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/95 backdrop-blur-xl flex items-center justify-center p-6"
+          >
             <motion.div 
-              key="envelope-stage"
-              exit={{ opacity: 0, scale: 1.1, filter: 'blur(10px)' }}
-              transition={{ duration: 1 }}
-              className="flex flex-col items-center justify-center w-full"
-              onClick={startAnimation}
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-lg bg-[#0f0f0f] rounded-2xl border border-white/5 p-8 shadow-2xl"
             >
-              {/* Background Dust */}
-              <div className="dust-container">
-                {particles.map((_, i) => (
-                  <div 
-                    key={i} 
-                    className="dust"
-                    style={{
-                      left: `${Math.random() * 100}%`,
-                      top: `${Math.random() * 100}%`,
-                      width: `${Math.random() * 2 + 1}px`,
-                      height: `${Math.random() * 2 + 1}px`,
-                      animationDelay: `${Math.random() * 10}s`,
-                      animationDuration: `${15 + Math.random() * 10}s`
-                    }}
-                  />
-                ))}
+              <div className="flex items-center justify-between mb-8 pb-4 border-b border-white/5">
+                <h2 className="text-white font-mono text-xs tracking-[0.4em] uppercase">Anonymous Reply</h2>
+                <button onClick={() => setShowReplyPanel(false)} className="text-white/40 hover:text-white">&times;</button>
               </div>
-
-              <div className={`envelope-wrapper ${animationStage === 'animating' ? 'envelope-opening' : ''}`}>
-                <div className="envelope">
-                  <div className="envelope-back-flap" />
-                  <div className="envelope-letter" />
-                  <div className="envelope-front-left" />
-                  <div className="envelope-front-right" />
-                  
-                  {/* Wax Seal with Shards */}
-                  <div className="wax-seal-wrapper">
-                    <div className="seal-main">N</div>
-                    {Array.from({ length: 6 }).map((_, i) => (
-                      <div 
-                        key={i} 
-                        className="shard"
-                        style={{
-                          '--shard-dest': `translate(${(Math.random() - 0.5) * 200}px, ${(Math.random() - 0.5) * 200}px)`,
-                          '--shard-rot': `${Math.random() * 360}deg`,
-                          top: '50%',
-                          left: '50%',
-                          animationDelay: `${Math.random() * 0.1}s`
-                        } as any}
-                      />
-                    ))}
-                  </div>
+              
+              <div className="relative mb-6 group bg-white/[0.03] border border-white/10 rounded-xl overflow-hidden focus-within:border-[#d4a843]/40 transition-colors flex flex-col">
+                <textarea
+                  autoFocus
+                  rows={5}
+                  value={replyText}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val.length <= 1000) {
+                      setReplyText(val);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    // Prevent typing more characters if at limit, except for backspace/delete
+                    if (replyText.length >= 1000 && e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+                      e.preventDefault();
+                    }
+                  }}
+                  className="w-full bg-transparent p-6 text-white font-serif text-lg resize-none focus:outline-none placeholder:text-white/10 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 flex-1"
+                  placeholder="Type your response..."
+                />
+                <div className="h-12 px-6 border-t border-white/5 flex items-center bg-black/20">
+                  <span className={`text-[9px] font-mono tracking-widest uppercase transition-colors ${replyText.length >= 1000 ? 'text-[#ef4444]' : 'text-white/20 group-focus-within:text-[#d4a843]/40'}`}>
+                    {replyText.length} / 1000
+                  </span>
                 </div>
               </div>
-
-              {/* Labels */}
-              <div className={`mt-20 flex flex-col items-center gap-2 transition-all duration-700 ${animationStage === 'animating' ? 'opacity-0 scale-90 translate-y-12' : 'opacity-100 translate-y-0'}`}>
-                <p className="text-[#d4a843] font-mono text-[10px] tracking-[0.5em] uppercase font-black" style={{ fontFamily: '"Courier New", Courier, monospace' }}>
-                  Private Transmission
-                </p>
-                <p className="text-white/30 text-[8px] uppercase tracking-[0.2em] font-medium" style={{ animation: 'labelPulse 2s ease-in-out infinite' }}>
-                  Tap anywhere to reveal content
-                </p>
-              </div>
-            </motion.div>
-          ) : (
-            <motion.div 
-              key="note-stage"
-              initial={{ opacity: 0, y: 40 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, ease: "easeOut" }}
-              className="flex flex-col items-center gap-12 w-full max-w-4xl"
-            >
-              <div className="w-full text-center opacity-30">
-                <p className="text-[10px] uppercase tracking-[0.5em] font-black">— Secure Transmission Resolved —</p>
-              </div>
-
-              {/* Note Container (Fixed height) */}
-              <div 
-                className="relative w-full max-w-[600px] h-[900px] shadow-[0_60px_120px_rgba(0,0,0,0.6)] rounded-sm overflow-hidden group border border-white/5 bg-black"
-                ref={contentRef}
+              
+              <button 
+                disabled={!replyText.trim() || isSendingReply}
+                onClick={submitReply}
+                className="w-full py-5 bg-[#d4a843] text-black text-[11px] tracking-[0.4em] font-black uppercase rounded-xl hover:bg-white transition-all disabled:opacity-20 active:scale-[0.98] shadow-xl"
               >
-                <div 
-                  className="w-full h-full note-viewer-card-wrapper"
-                  dangerouslySetInnerHTML={{ 
-                    __html: (viewingData?.noteHTML || "")
-                      .replace(/contenteditable="true"/g, 'contenteditable="false"')
-                  }}
-                />
-                
-                {/* Bottom Fade Gradient */}
-                <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none z-10" />
-                
-                {/* Scroll Indicator Arrow */}
-                <AnimatePresence>
-                  {showScrollArrow && (
-                    <motion.div 
-                      initial={{ opacity: 0, y: -5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0 }}
-                      className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 text-white pointer-events-none animate-bounce"
-                    >
-                      <ChevronDown size={24} />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* Reply Section */}
-              <div className="w-full max-w-[600px] flex flex-col items-center gap-6 bg-black/40 backdrop-blur-md p-8 rounded-sm border border-white/5 shadow-2xl">
-                {hasReplied ? (
-                  <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="py-2"
-                  >
-                    <p className="text-[#d4a843] text-[11px] tracking-[0.5em] font-black uppercase">
-                       Reply Sent ✓
-                    </p>
-                  </motion.div>
-                ) : (
-                  <div className="w-full flex flex-col gap-4">
-                    <div className="flex items-center gap-3">
-                      <span className="text-[10px] uppercase tracking-[0.5em] font-black text-[#d3c5ad]">Reply</span>
-                    </div>
-                    
-                    <div className="relative group">
-                      <textarea
-                        value={replyText}
-                        onChange={(e) => setReplyText(e.target.value.slice(0, 500))}
-                        placeholder="Type your response..."
-                        className="w-full bg-white/[0.03] border border-white/10 rounded-sm p-4 text-sm text-white/80 placeholder:text-white/20 focus:outline-none focus:border-[#d4a843]/40 transition-all resize-none h-32 font-serif"
-                      />
-                      <div className="absolute bottom-3 right-3 text-[8px] font-mono text-white/20 tracking-widest">
-                        {replyText.length}/500
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={submitReply}
-                      disabled={!replyText.trim() || isSendingReply}
-                      className="w-full py-4 bg-[#b89e7a] text-black text-[10px] uppercase tracking-[0.4em] font-black hover:bg-[#c9bda4] disabled:opacity-20 disabled:cursor-not-allowed transition-all active:scale-[0.98] shadow-lg"
-                    >
-                      {isSendingReply ? 'Dispatching...' : 'Send Reply'}
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex flex-col items-center gap-6 mt-12 pb-10">
-                <p className="text-[10px] uppercase tracking-[0.5em] font-black text-white/90">Sent via NoNameNote System</p>
-                <Link 
-                  to="/"
-                  className="group text-[12px] uppercase tracking-[0.6em] font-black text-[#b89e7a] border-b-2 border-[#b89e7a]/30 pb-2 hover:border-[#b89e7a] transition-all flex items-center gap-3"
-                >
-                  Send your own note
-                  <span className="group-hover:translate-x-2 transition-transform">→</span>
-                </Link>
-              </div>
+                {isSendingReply ? 'Sending...' : 'Dispatch Reply'}
+              </button>
             </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <style dangerouslySetInnerHTML={{ __html: `
-        :root {
-          --note-scale: 1;
+        .note-content-rendered {
+          font-size: 1.5rem;
+          line-height: 1.7; /* Slightly more breathable for parchment */
         }
-        @media (max-width: 640px) {
-          :root { --note-scale: 0.85; }
+        @media (max-width: 768px) {
+          .note-content-rendered {
+            font-size: 1.25rem;
+          }
         }
-        @media (max-width: 480px) {
-          :root { --note-scale: 0.75; }
+        /* Hide internal headers, character counts, and metadata blocks that might be in the noteHTML */
+        .note-content-rendered .dispatch-header,
+        .note-content-rendered .header-box,
+        .note-content-rendered .char-count,
+        .note-content-rendered [style*="border-width: 2px"],
+        .note-content-rendered [style*="border: 2px"] {
+           display: none !important;
         }
-        @media (max-width: 380px) {
-          :root { --note-scale: 0.65; }
+        
+        .note-content-rendered .disabled-link {
+           text-decoration: underline;
+           text-decoration-style: dotted;
+           cursor: not-allowed;
+           opacity: 0.7;
+           color: #d4a843;
         }
-        #viewer-container [contenteditable] {
-          outline: none !important;
-          cursor: default !important;
-        }
-        .note-viewer-card-wrapper #note-card {
-          height: 100% !important;
-          min-height: 100% !important;
-          max-height: 100% !important;
-          width: 100% !important;
-          display: flex !important;
-          flex-direction: column !important;
-          padding: 2.5rem !important;
-          position: relative !important;
-          overflow: hidden !important;
-        }
-        .note-viewer-card-wrapper #note-card #stamp {
-          position: absolute !important;
-          top: 2.5rem !important;
-          right: 2.5rem !important;
-          z-index: 5 !important;
-          pointer-events: none !important;
-        }
-        .note-viewer-card-wrapper #note-card > div[contenteditable="false"] {
-          overflow-y: auto !important;
-          flex: 1 !important;
-          padding-right: 0.5rem;
-          scrollbar-width: thin;
-          scrollbar-color: rgba(255,255,255,0.1) transparent;
-        }
-        .note-viewer-card-wrapper #note-card > div[contenteditable="false"]::-webkit-scrollbar {
-          width: 4px;
-        }
-        .note-viewer-card-wrapper #note-card > div[contenteditable="false"]::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .note-viewer-card-wrapper #note-card > div[contenteditable="false"]::-webkit-scrollbar-thumb {
-          background: rgba(255,255,255,0.1);
-          border-radius: 10px;
+        
+        /* Ensure the stamp (img) is visible and positioned if it came from the HTML */
+        .note-content-rendered img {
+           display: block !important;
+           max-width: 80px;
+           height: auto;
+           opacity: 0.6;
         }
 
-        /* Envelope Animations Re-restored */
-        .envelope-wrapper {
-          position: relative;
-          width: 300px;
-          height: 200px;
-          perspective: 1000px;
-          cursor: pointer;
+        .note-content-rendered blockquote {
+          border-left: 3px solid #d4a843;
+          padding-left: 1.5rem;
+          margin: 2rem 0;
+          font-style: italic;
+          opacity: 0.9;
         }
-        .envelope {
-          position: relative;
-          width: 100%;
-          height: 100%;
-          background: #1a1a1a;
-          transform-style: preserve-3d;
-          transition: transform 1s;
+        .note-content-rendered h2 {
+           font-size: 2em;
+           margin-bottom: 0.75em;
+           margin-top: 1.5em;
+           font-weight: 600;
+           line-height: 1.2;
         }
-        .envelope-opening .envelope {
-          transform: translateY(100px) rotateX(10deg);
+        .note-content-rendered p {
+          margin-bottom: 1.25em;
         }
-        .envelope-back-flap {
-          position: absolute;
-          width: 100%;
-          height: 100%;
-          background: #1a1a1a;
-          clip-path: polygon(0 0, 50% 50%, 100% 0, 100% 100%, 0 100%);
-          z-index: 1;
-        }
-        .envelope-letter {
-          position: absolute;
-          width: 90%;
-          height: 80%;
-          background: #d3c5ad;
-          left: 5%;
-          top: 10%;
-          z-index: 2;
-          transition: transform 1s 0.5s;
-        }
-        .envelope-opening .envelope-letter {
-          transform: translateY(-150px);
-        }
-        .envelope-front-left {
-          position: absolute;
-          width: 100%;
-          height: 100%;
-          background: #2a2a2a;
-          clip-path: polygon(0 0, 50% 50%, 0 100%);
-          z-index: 3;
-        }
-        .envelope-front-right {
-          position: absolute;
-          width: 100%;
-          height: 100%;
-          background: #2a2a2a;
-          clip-path: polygon(100% 0, 50% 50%, 100% 100%);
-          z-index: 3;
-        }
-        .wax-seal-wrapper {
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          z-index: 10;
-          width: 50px;
-          height: 50px;
-        }
-        .seal-main {
-          width: 100%;
-          height: 100%;
-          background: #b89e7a;
-          border-radius: 50%;
-          display: flex;
-          items-center: center;
-          justify-content: center;
+        .note-content-rendered mark {
+          background-color: #d4a843;
           color: black;
-          font-weight: bold;
-          font-family: serif;
-          box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-          transition: opacity 0.3s;
-        }
-        .envelope-opening .seal-main {
-          opacity: 0;
-        }
-        .shard {
-          position: absolute;
-          width: 15px;
-          height: 15px;
-          background: #b89e7a;
-          clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
-          opacity: 0;
-        }
-        .envelope-opening .shard {
-          animation: shardOut 1s forwards;
-        }
-        @keyframes shardOut {
-          0% { opacity: 1; transform: translate(-50%, -50%) rotate(0deg); }
-          100% { opacity: 0; transform: var(--shard-dest) rotate(var(--shard-rot)); }
-        }
-        .dust-container {
-          position: fixed;
-          inset: 0;
-          pointer-events: none;
-          z-index: -1;
-        }
-        .dust {
-          position: absolute;
-          background: #b89e7a;
-          border-radius: 50%;
-          opacity: 0.2;
-          animation: dustFall linear infinite;
-        }
-        @keyframes dustFall {
-          0% { transform: translateY(-100px) rotate(0deg); opacity: 0; }
-          10% { opacity: 0.2; }
-          90% { opacity: 0.2; }
-          100% { transform: translateY(100vh) rotate(360deg); opacity: 0; }
-        }
-        @keyframes labelPulse {
-          0%, 100% { opacity: 0.3; transform: scale(1); }
-          50% { opacity: 0.1; transform: scale(0.98); }
+          padding: 0 4px;
         }
       `}} />
     </div>

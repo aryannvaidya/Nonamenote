@@ -3,8 +3,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import emailjs from '@emailjs/browser';
 import { 
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, 
-  Send, Mail, CheckCircle2, AlertCircle, History, X, Check,
-  ChevronLeft, ChevronRight, Heading, Highlighter, Quote
+  Send, Mail, CheckCircle2, AlertCircle, History, X, Check, Info,
+  ChevronLeft, ChevronRight, Heading, Highlighter, Quote,
+  Shield, Eye, MessageCircle, Lock, ArrowLeft, CheckCheck, ShieldCheck
 } from 'lucide-react';
 
 // Helper for relative time
@@ -49,19 +50,44 @@ async function scanWithAI(text: string) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text })
     });
-    const result = await response.json();
+    
     if (!response.ok) {
-      console.error('API Error (Moderation):', response.status, result);
-      return result.toxic || false;
+      const errorText = await response.text().catch(() => 'No error text');
+      console.warn('Moderation API failed:', response.status, errorText.slice(0, 100));
+      return false; // Fail safe
     }
-    return result.toxic;
+
+    const result = await response.json();
+    return result.toxic || false;
   } catch (error) {
-    console.error('Moderation fetch failed:', error);
-    return false;
+    console.error('Moderation Error:', error);
+    return false; // Fail safe
   }
 }
 import confetti from 'canvas-confetti';
 import { Theme, THEMES, CHAR_LIMIT } from './types';
+
+// Reply Item Component
+const ReplyItem = ({ reply, getRelativeTime }: { reply: any, getRelativeTime: any }) => {
+  const replyTimeRaw = reply.timestamp;
+  const replyTime = typeof replyTimeRaw === 'number' 
+    ? replyTimeRaw 
+    : (replyTimeRaw?.seconds ? replyTimeRaw.seconds * 1000 : new Date(replyTimeRaw).getTime());
+
+  return (
+    <div className="relative">
+       <div className="bg-[#1c1c1c] rounded-[14px] p-6 border border-[#d4a843]/20 shadow-[0_0_20px_rgba(212,168,67,0.08)] relative timeline-card">
+          <span className="absolute top-4 left-4 text-[#d4a843]/20 text-6xl font-serif leading-none select-none italic">“</span>
+          <p className="text-white font-mono text-sm leading-relaxed relative z-10 pt-4 break-words text-justify">{reply.message}</p>
+          <div className="mt-4 text-right">
+            <span className="text-[#666666] text-[10px] font-mono uppercase tracking-widest">
+              {getRelativeTime(replyTime)}
+            </span>
+          </div>
+       </div>
+    </div>
+  );
+};
 
 export default function MainApp() {
   const [content, setContent] = useState('');
@@ -70,6 +96,7 @@ export default function MainApp() {
   const [activeTextColor, setActiveTextColor] = useState<string | null>(null);
   const [activeFormats, setActiveFormats] = useState<{ [key: string]: boolean }>({});
   const [highlighterMode, setHighlighterMode] = useState(false);
+  const [highlighterManuallyDisabled, setHighlighterManuallyDisabled] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
   const [nextAvailableTime, setNextAvailableTime] = useState<string>('');
@@ -77,31 +104,198 @@ export default function MainApp() {
   const [showRulesOverlay, setShowRulesOverlay] = useState(false);
   const [agreedToRules, setAgreedToRules] = useState(false);
   const [understoodResponsibility, setUnderstoodResponsibility] = useState(false);
-  const [logs, setLogs] = useState<{ id: string; noteId?: string; recipient: string; content: string; timestamp: number; hasUnread?: boolean; replyCount?: number; opened?: boolean; openedAt?: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [logs, setLogs] = useState<{ id: string; noteId?: string; recipient: string; content: string; timestamp: number; hasUnread?: boolean; replyCount?: number; opened?: boolean; openedAt?: number; isDraft?: boolean; themeId?: string; htmlContent?: string; }[]>([]);
   const [activeLogThread, setActiveLogThread] = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<'ALL' | 'DRAFT' | 'UNREAD' | 'SEEN' | 'DELIVERED'>('ALL');
+  const [undoLog, setUndoLog] = useState<{ log: any; index: number } | null>(null);
+  const [undoTimer, setUndoTimer] = useState<number>(0);
   const [activeNoteData, setActiveNoteData] = useState<any>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [loadedDraftContent, setLoadedDraftContent] = useState<string | null>(null);
+
+  const hasActualText = (html: string) => {
+    const temp = document.createElement('div');
+    temp.innerHTML = html;
+    return temp.innerText.replace(/\u200B/g, '').trim().length > 0;
+  };
+
+  // Auto-save unsent transmission
+  useEffect(() => {
+    const hasText = hasActualText(content);
+    if (hasText) {
+      const timeout = setTimeout(() => {
+        localStorage.setItem('unsent_transmission', JSON.stringify({
+          content,
+          recipient,
+          themeId: selectedTheme.id,
+          timestamp: Date.now()
+        }));
+      }, 1000);
+      return () => clearTimeout(timeout);
+    } else {
+      // If content is empty, we might want to clear the unsent draft if it exists
+      // but maybe only if the recipient is also empty
+      if (!recipient.trim()) {
+        localStorage.removeItem('unsent_transmission');
+      }
+    }
+  }, [content, recipient, selectedTheme]);
+
+  useEffect(() => {
+    if (showLogs) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+    }
+  }, [showLogs]);
+
+  const handleDeleteLog = (id: string) => {
+    const logIndex = logs.findIndex(l => (l.id === id || l.noteId === id));
+    if (logIndex === -1) return;
+
+    const logToDelete = logs[logIndex];
+    const newLogs = logs.filter(l => (l.id !== id && l.noteId !== id));
+    
+    setLogs(newLogs);
+    localStorage.setItem('sentNotesLog', JSON.stringify(newLogs));
+    
+    setUndoLog({ log: logToDelete, index: logIndex });
+    setUndoTimer(5);
+  };
+
+  useEffect(() => {
+    let interval: any;
+    if (undoTimer > 0) {
+      interval = setInterval(() => {
+        setUndoTimer(prev => prev - 1);
+      }, 1000);
+    } else {
+      setUndoLog(null);
+    }
+    return () => clearInterval(interval);
+  }, [undoTimer]);
+
+  const handleUndoDelete = () => {
+    if (undoLog) {
+      const newLogs = [...logs];
+      newLogs.splice(undoLog.index, 0, undoLog.log);
+      setLogs(newLogs);
+      localStorage.setItem('sentNotesLog', JSON.stringify(newLogs));
+      setUndoLog(null);
+      setUndoTimer(0);
+    }
+  };
   const [showFullTime, setShowFullTime] = useState<{[key: string]: boolean}>({});
   const [replies, setReplies] = useState<{ [noteId: string]: any[] }>({});
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [showSendAnimation, setShowSendAnimation] = useState(false);
+  const [isOverlayFadingOut, setIsOverlayFadingOut] = useState(false);
+  const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
 
   const editorRef = useRef<HTMLDivElement>(null);
   const themeScrollRef = useRef<HTMLDivElement>(null);
   const sendButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    const rulesAccepted = localStorage.getItem('rulesAccepted');
-    if (!rulesAccepted) {
-      setShowRulesOverlay(true);
-    }
-    const savedLogs = localStorage.getItem('sentNotesLog');
-    if (savedLogs) {
+    // Force browser to use divs for new lines, ensuring proper block separation for alignment
+    document.execCommand('defaultParagraphSeparator', false, 'div');
+
+    const initApp = async () => {
       try {
-        const parsed = JSON.parse(savedLogs);
-        setLogs(parsed);
-        checkAllReplies(parsed);
-      } catch (e) {
-        console.error("Failed to parse logs", e);
+        setLoading(true);
+        const rulesAccepted = localStorage.getItem('rulesAccepted');
+        if (!rulesAccepted) {
+          setShowRulesOverlay(true);
+        }
+        const savedLogs = localStorage.getItem('sentNotesLog');
+        if (savedLogs) {
+          try {
+            const parsed = JSON.parse(savedLogs);
+            const uniqueLogs = Array.isArray(parsed) ? parsed.filter((log, index, self) => 
+              log && index === self.findIndex((t) => t && ((t.id && t.id === log.id) || (t.noteId && t.noteId === log.noteId)))
+            ) : [];
+            setLogs(uniqueLogs);
+            checkAllReplies(uniqueLogs).catch(err => console.error("Archive status check failed:", err));
+          } catch (e) {
+            console.error("Failed to parse logs", e);
+          }
+        }
+      } catch (err) {
+        console.error("Initialization error:", err);
+        setError("Failed to initialize application");
+      } finally {
+        setLoading(false);
       }
-    }
+    };
+    
+    initApp();
+
+    // Check for auto-saved unsent transmission
+    const checkUnsent = () => {
+      const unsent = localStorage.getItem('unsent_transmission');
+      if (unsent) {
+        try {
+          const parsed = JSON.parse(unsent);
+          // If editor is empty, ask to restore or just restore if it's recent (e.g. within 1 hour)
+          // For simplicity and user experience, we'll just restore if the current editor is truly empty
+          const isEditorEmpty = !content.trim() || content === '<br>';
+          if (isEditorEmpty && (Date.now() - parsed.timestamp < 3600000)) {
+            setRecipient(parsed.recipient || '');
+            const theme = THEMES.find(t => t.id === parsed.themeId) || THEMES[0];
+            setSelectedTheme(theme);
+            if (editorRef.current) {
+              editorRef.current.innerHTML = parsed.content || '';
+              setContent(parsed.content || '');
+            }
+          }
+        } catch (e) {
+          console.error("Failed to parse unsent transmission", e);
+        }
+      }
+    };
+    checkUnsent();
+
+    const handleError = (errorEvent: ErrorEvent) => {
+      // Ignore routine ResizeObserver errors which can sometimes trigger Script error in some environments
+      const msg = errorEvent.message || '';
+      if (msg.includes('ResizeObserver') || msg === 'Script error.') {
+        return;
+      }
+      // Log more detail if possible to help diagnose Script error
+      console.error('Caught Global Error:', {
+        message: msg,
+        filename: errorEvent.filename,
+        lineno: errorEvent.lineno,
+        colno: errorEvent.colno,
+        error: errorEvent.error
+      });
+    };
+    window.addEventListener('error', handleError);
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      const msg = reason?.message || String(reason || '');
+      
+      // Silence known noise
+      if (msg.includes('ResizeObserver') || msg.includes('Failed to fetch')) {
+        event.preventDefault();
+        return;
+      }
+
+      console.error('Unhandled Promise Rejection Detected:', {
+        reason: event.reason,
+        message: msg,
+        stack: event.reason?.stack,
+        isHTML: typeof event.reason === 'string' && event.reason.includes('<')
+      });
+      event.preventDefault();
+    };
+    window.addEventListener('unhandledrejection', handleRejection);
+    return () => {
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleRejection);
+    };
   }, []);
 
   const handleAcceptRules = () => {
@@ -109,67 +303,152 @@ export default function MainApp() {
     setShowRulesOverlay(false);
   };
 
+  const handleDeleteTransmission = () => {
+    if (!activeLogThread) return;
+    const updated = logs.filter(l => l.noteId !== activeLogThread);
+    setLogs(updated);
+    localStorage.setItem('sentNotesLog', JSON.stringify(updated));
+    setActiveLogThread(null);
+    setActiveNoteData(null);
+    setShowDeleteConfirm(false);
+    setShowLogs(false);
+  };
+
+  useEffect(() => {
+    if (!showLogs || !activeLogThread) return;
+
+    // Direct fetch helper for active thread replies
+    const refreshActiveReplies = async () => {
+      try {
+        setIsSyncing(true);
+        const res = await fetch('/api/get-replies', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ noteId: activeLogThread })
+        });
+        if (res.ok) {
+          const { replies: repliesData } = await res.json();
+          setReplies(prev => ({ ...prev, [activeLogThread]: repliesData || [] }));
+        }
+      } catch (e: any) {
+        if (e?.message?.includes('Failed to fetch')) {
+          console.warn("Poll replies interrupt:", e.message);
+        } else {
+          console.error("Failed to poll replies", e);
+        }
+      } finally {
+        // Subtle delay for the sync indicator to feel meaningful
+        setTimeout(() => setIsSyncing(false), 800);
+      }
+    };
+
+    // Initial refresh when opening thread
+    refreshActiveReplies().catch(err => console.error("Archive status check failed:", err));
+
+    // Poll every 10 seconds while thread is active
+    const interval = setInterval(() => {
+      refreshActiveReplies().catch(err => console.error("Archive status check failed:", err));
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [showLogs, activeLogThread]);
+
   const checkAllReplies = async (currentLogs: any[]) => {
+    if (!currentLogs.length) return;
+    
+    // Process active first, then others in parallel
     const updatedLogs = [...currentLogs];
-    let changed = false;
-
-    for (let i = 0; i < updatedLogs.length; i++) {
-      const log = updatedLogs[i];
-      if (log.noteId) {
-        try {
-          // Get note status
-          const response = await fetch('/api/get-note', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ noteId: log.noteId })
-          });
-          if (!response.ok) continue;
+    const activeIdx = activeLogThread ? updatedLogs.findIndex(l => l.noteId === activeLogThread) : -1;
+    
+    const checkLog = async (idx: number) => {
+      const log = updatedLogs[idx];
+      if (!log?.noteId) return null;
+      
+      try {
+        const response = await fetch('/api/get-note', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ noteId: log.noteId, markSeen: false })
+        });
+        if (!response.ok) return null;
+        
+        const { note } = await response.json();
+        if (note) {
+          const isOpened = !!note.opened;
+          const openedAtValue = note.openedAt ? new Date(note.openedAt).getTime() : null;
           
-          const { note } = await response.json();
-          
-          if (note) {
-            const isOpened = note.opened || false;
-            const openedAtValue = note.openedAt ? new Date(note.openedAt).getTime() : null;
-            
-            if (log.opened !== isOpened || log.openedAt !== openedAtValue) {
-              updatedLogs[i] = { ...updatedLogs[i], opened: isOpened, openedAt: openedAtValue };
-              changed = true;
-            }
+          let logChanged = false;
+          let entry = { ...updatedLogs[idx] };
 
-            // Get replies from separate endpoint (Step 5)
+          if (log.opened !== isOpened || log.openedAt !== openedAtValue) {
+            entry = { ...entry, opened: isOpened, openedAt: openedAtValue };
+            logChanged = true;
+          }
+
+          // Fetch replies if active
+          if (log.noteId === activeLogThread) {
             const repliesRes = await fetch('/api/get-replies', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ noteId: log.noteId })
             });
-            
             if (repliesRes.ok) {
               const { replies: repliesData } = await repliesRes.json();
-              const unreadCount = (repliesData || []).filter((r: any) => !r.read).length;
-              
-              if (log.hasUnread !== (unreadCount > 0) || log.replyCount !== repliesData?.length) {
-                updatedLogs[i] = { ...updatedLogs[i], hasUnread: unreadCount > 0, replyCount: repliesData?.length };
-                changed = true;
-              }
-              
               setReplies(prev => ({ ...prev, [log.noteId!]: repliesData || [] }));
+              
+              const unreadCount = (repliesData || []).filter((r: any) => !r.read).length;
+              if (log.hasUnread !== (unreadCount > 0) || log.replyCount !== repliesData?.length) {
+                entry = { ...entry, hasUnread: unreadCount > 0, replyCount: repliesData?.length };
+                logChanged = true;
+              }
             }
           }
-        } catch (e) {
-          console.error("Failed to check status for", log.noteId, e);
+          
+          if (logChanged) return { idx, entry };
         }
+      } catch (e: any) {
+        // Network failures during background sync should be warnings, not errors
+        if (e?.message?.includes('Failed to fetch')) {
+          console.warn("Status check network interrupt:", e.message);
+        } else {
+          console.error("Status check failed", e);
+        }
+      }
+      return null;
+    };
+
+    // If active thread exists, check it immediately
+    if (activeIdx !== -1) {
+      const result = await checkLog(activeIdx);
+      if (result) {
+        updatedLogs[result.idx] = result.entry;
+        setLogs([...updatedLogs]);
       }
     }
 
-    if (changed) {
-      setLogs(updatedLogs);
-      localStorage.setItem('sentNotesLog', JSON.stringify(updatedLogs));
+    // Process remainder in parallel batches of 5 to avoid overwhelming the browser
+    const remainingIndices = updatedLogs.map((_, i) => i).filter(i => i !== activeIdx);
+    for (let i = 0; i < remainingIndices.length; i += 5) {
+      const batch = remainingIndices.slice(i, i + 5);
+      const results = await Promise.all(batch.map(idx => checkLog(idx)));
+      
+      let batchChanged = false;
+      results.forEach(res => {
+        if (res) {
+          updatedLogs[res.idx] = res.entry;
+          batchChanged = true;
+        }
+      });
+      
+      if (batchChanged) {
+        setLogs([...updatedLogs]);
+        localStorage.setItem('sentNotesLog', JSON.stringify(updatedLogs));
+      }
     }
   };
 
   const saveToLogs = (recipient: string, contentHTML: string, noteId?: string) => {
     const newLog = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       noteId,
       recipient,
       content: contentHTML.substring(0, 500), // Safety limit for storage
@@ -177,19 +456,32 @@ export default function MainApp() {
     };
     
     setLogs(prev => {
-      const updated = [newLog, ...prev];
+      // Deduplicate by noteId if provided
+      const existingIndex = noteId ? prev.findIndex(l => l.noteId === noteId) : -1;
+      let updated;
+      if (existingIndex !== -1 && noteId) {
+        updated = [...prev];
+        updated[existingIndex] = { ...updated[existingIndex], ...newLog, id: prev[existingIndex].id }; // Keep original ID
+      } else {
+        updated = [newLog, ...prev];
+      }
+      
       const slice = updated.slice(0, 50);
       localStorage.setItem('sentNotesLog', JSON.stringify(slice));
       return slice;
     });
   };
-  const [showSendAnimation, setShowSendAnimation] = useState(false);
-  const [isOverlayFadingOut, setIsOverlayFadingOut] = useState(false);
-  const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
-
-  useEffect(() => {
-    // Initialized in separate useEffect above
-  }, []);
+  const rgbToHex = (rgb: string) => {
+    if (!rgb || rgb === 'inherit' || rgb === 'transparent') return null;
+    if (rgb.startsWith('#')) return rgb.toLowerCase();
+    const match = rgb.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*(\d*(?:\.\d+)?))?\)$/);
+    if (!match) return rgb.toLowerCase();
+    const r = parseInt(match[1]);
+    const g = parseInt(match[2]);
+    const b = parseInt(match[3]);
+    const hex = "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toLowerCase();
+    return hex;
+  };
 
   const updateActiveFormats = useCallback(() => {
     if (typeof document === 'undefined') return;
@@ -205,11 +497,26 @@ export default function MainApp() {
 
     const selection = window.getSelection();
     let inHighlighterContext = false;
-    let inH2Context = document.queryCommandValue('formatBlock') === 'h2' || false;
-    let inBlockquoteContext = document.queryCommandValue('formatBlock') === 'blockquote' || false;
+    let currentColor: string | null = null;
+    
+    // Improved Heading Detection
+    const blockValue = document.queryCommandValue('formatBlock')?.toLowerCase();
+    let inH2Context = blockValue === 'h2' || blockValue === 'heading 2';
+    let inBlockquoteContext = blockValue === 'blockquote';
 
     if (selection && selection.rangeCount > 0) {
       let node = selection.anchorNode;
+      
+      // Try to get foreColor from document
+      const colorValue = document.queryCommandValue('foreColor');
+      if (colorValue && colorValue !== 'inherit') {
+        const hex = rgbToHex(colorValue);
+        // We only care if it's NOT the theme's default text color
+        if (hex !== rgbToHex(selectedTheme.defaultTextColor || '#ffffff')) {
+          currentColor = hex;
+        }
+      }
+
       let tempNode = node;
       while (tempNode && tempNode !== editorRef.current) {
         if (tempNode instanceof HTMLElement) {
@@ -218,6 +525,13 @@ export default function MainApp() {
           if (name === 'BLOCKQUOTE') inBlockquoteContext = true;
           if (tempNode.classList.contains('highlighter') || (tempNode.style && tempNode.style.backgroundColor !== '')) {
             inHighlighterContext = true;
+          }
+          // If we haven't found a color yet, check the style
+          if (!currentColor && tempNode.style && tempNode.style.color) {
+            const hex = rgbToHex(tempNode.style.color);
+            if (hex !== rgbToHex(selectedTheme.defaultTextColor || '#ffffff')) {
+              currentColor = hex;
+            }
           }
         }
         tempNode = tempNode.parentNode;
@@ -230,15 +544,28 @@ export default function MainApp() {
 
     setActiveFormats(formats);
     
+    // Tracking active text color
+    if (currentColor) {
+      setActiveTextColor(currentColor);
+    } else {
+      // If we are on empty editor, don't reset if we have a state
+      if (editorRef.current && editorRef.current.innerText.replace(/\u200B/g, '').trim().length > 0) {
+        setActiveTextColor(null);
+      }
+    }
+
     if (selection && selection.isCollapsed) {
       if (inHighlighterContext) {
-        setHighlighterMode(true);
+        if (!highlighterManuallyDisabled) {
+          setHighlighterMode(true);
+        }
       } else {
         setHighlighterMode(false);
+        setHighlighterManuallyDisabled(false);
       }
     }
     return { ...formats, highlighter: inHighlighterContext };
-  }, []);
+  }, [highlighterManuallyDisabled, selectedTheme.defaultTextColor]);
 
   useEffect(() => {
     const handleEvents = () => updateActiveFormats();
@@ -259,10 +586,90 @@ export default function MainApp() {
     };
   }, [updateActiveFormats]);
 
-  const handleInput = () => {
+  const handleInput = (forcedColor?: string | null) => {
     if (editorRef.current) {
-      const text = editorRef.current.innerText.replace(/\u200B/g, '').trim();
-      if (text.length === 0) {
+      const text = editorRef.current.innerText.replace(/\u200B/g, '');
+      const innerHTML = editorRef.current.innerHTML;
+
+      if (text.length > CHAR_LIMIT) {
+        // Find the cursor position
+        const selection = window.getSelection();
+        const range = selection?.getRangeAt(0);
+        const offset = range?.startOffset || 0;
+        
+        // Revert to limited text
+        editorRef.current.innerText = text.substring(0, CHAR_LIMIT);
+        
+        // Restore cursor position if possible
+        if (selection && range && editorRef.current.firstChild) {
+          try {
+            const newRange = document.createRange();
+            newRange.setStart(editorRef.current.firstChild, Math.min(offset, CHAR_LIMIT));
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+          } catch(e) {}
+        }
+      }
+      
+      const cleanText = editorRef.current.innerText.replace(/\u200B/g, '').replace(/[\n\r]+$/, '');
+      
+      if (cleanText.length === 0) {
+        const selection = window.getSelection();
+        // Use the forced color if provided, otherwise the current state
+        let hasFormatting = !!(forcedColor !== undefined ? forcedColor : activeTextColor);
+        
+        // Search for parent formatting tags
+        if (selection && selection.rangeCount > 0) {
+          let node = selection.anchorNode;
+          while (node && node !== editorRef.current) {
+            if (node instanceof HTMLElement) {
+              const name = node.nodeName.toUpperCase();
+              if (['H2', 'BLOCKQUOTE', 'B', 'I', 'U', 'S', 'STRIKE'].includes(name) || node.classList.contains('highlighter') || (node.style && node.style.backgroundColor)) {
+                hasFormatting = true;
+                break;
+              }
+            }
+            node = node.parentNode;
+          }
+          
+          if (!hasFormatting) {
+            hasFormatting = document.queryCommandState('bold') || 
+                            document.queryCommandState('italic') || 
+                            document.queryCommandState('underline');
+          }
+        }
+
+        // More restrictive reset for Heading/Blockquote detection
+        const blockValue = document.queryCommandValue('formatBlock')?.toLowerCase();
+        const isInBlock = blockValue === 'h2' || blockValue === 'blockquote' || blockValue === 'heading 2';
+        if (isInBlock) hasFormatting = true;
+
+        if (!hasFormatting && forcedColor === undefined) {
+          setActiveTextColor(null);
+          setHighlighterMode(false);
+          setHighlighterManuallyDisabled(false);
+        }
+        
+        // Only reset innerHTML if it's truly devoid of any structural formatting
+        const inner = editorRef.current.innerHTML.toLowerCase();
+        // If we have a blockquote or h2, it's not trivial to reset
+        const hasStructuralElements = inner.includes('<blockquote') || inner.includes('<h2');
+        const isTrivial = (inner === '' || inner === '<br>' || inner === '<div><br></div>' || inner === '<p><br></p>' || inner === '<div></div>') && !hasStructuralElements;
+        
+        if (isTrivial && !hasFormatting) {
+          editorRef.current.innerHTML = '<div><br></div>';
+          if (selection) {
+            const range = document.createRange();
+            if (editorRef.current.firstChild) {
+              range.setStart(editorRef.current.firstChild, 0);
+              range.collapse(true);
+              selection.removeAllRanges();
+              selection.addRange(range);
+            }
+          }
+        }
+      } else {
         const highlighterSpans = editorRef.current.querySelectorAll('.highlighter');
         highlighterSpans.forEach(span => {
           if (span.textContent?.replace(/\u200B/g, '').length === 0) {
@@ -271,108 +678,180 @@ export default function MainApp() {
         });
       }
       setContent(editorRef.current.innerHTML);
+      updateActiveFormats();
     }
   };
 
-  const execCommand = (command: string, value?: string) => {
-    editorRef.current?.focus();
-    const cmdValue = command === 'formatBlock' && value ? `<${value.toUpperCase()}>` : value;
+  useEffect(() => {
+    setActiveTextColor(null);
+  }, [selectedTheme]);
+
+  const handleSaveDraft = () => {
+    const hasText = hasActualText(content);
+    if (!hasText) return;
+
+    const draftLog = {
+      id: `draft-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      recipient,
+      content: editorRef.current?.innerText.substring(0, 500) || '',
+      htmlContent: content,
+      timestamp: Date.now(),
+      isDraft: true,
+      themeId: selectedTheme.id
+    };
+
+    setLogs(prev => {
+      const updated = [draftLog, ...prev];
+      const slice = updated.slice(0, 100); // Allow more for drafts
+      localStorage.setItem('sentNotesLog', JSON.stringify(slice));
+      return slice;
+    });
+
+    setLoadedDraftContent(content);
+    setStatus({ type: 'success', message: 'Transmission draft saved locally.' });
+    setTimeout(() => setStatus({ type: null, message: '' }), 3000);
+  };
+
+  const loadDraft = (log: any) => {
+    setRecipient(log.recipient || '');
+    const theme = THEMES.find(t => t.id === log.themeId) || THEMES[0];
+    setSelectedTheme(theme);
+    setLoadedDraftContent(log.htmlContent || '');
     
-    if (command === 'foreColor') {
+    if (editorRef.current) {
+      editorRef.current.innerHTML = log.htmlContent || '';
+      setContent(log.htmlContent || '');
+      // Focus the editor
+      setTimeout(() => {
+        editorRef.current?.focus();
+        // Move cursor to end
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(editorRef.current!);
+        range.collapse(false);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      }, 0);
+    }
+    
+    setShowLogs(false);
+    setActiveLogThread(null);
+    setStatus({ type: 'success', message: 'Draft loaded into editor.' });
+    setTimeout(() => setStatus({ type: null, message: '' }), 3000);
+  };
+
+  const execCommand = (command: string, value?: string) => {
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+    
+    let forcedColor: string | null | undefined = undefined;
+
+    if (command === 'formatBlock') {
+      const curValue = document.queryCommandValue('formatBlock').toLowerCase();
+      // If we are already in the target block type (e.g. h2), toggle back to a default block (p or div)
+      const isTargetActive = value === 'h2' ? (curValue === 'h2' || activeFormats.h2) : (curValue === value || (value === 'blockquote' && activeFormats.blockquote));
+      const toggleTo = isTargetActive ? 'div' : value;
+      document.execCommand('formatBlock', false, toggleTo);
+    } else if (command === 'foreColor') {
       if (activeTextColor === value) {
-        document.execCommand('foreColor', false, 'inherit');
+        document.execCommand('foreColor', false, selectedTheme.defaultTextColor || '#ffffff');
+        forcedColor = null;
         setActiveTextColor(null);
       } else {
-        document.execCommand('foreColor', false, cmdValue);
+        document.execCommand('foreColor', false, value);
+        forcedColor = value || null;
         setActiveTextColor(value || null);
       }
-    } else if (command === 'formatBlock') {
-      const isAlreadyActive = (value === 'h2' && activeFormats.h2) || (value === 'blockquote' && activeFormats.blockquote);
-      document.execCommand('formatBlock', false, isAlreadyActive ? '<P>' : cmdValue);
     } else {
-      document.execCommand(command, false, cmdValue);
+      document.execCommand(command, false, value);
     }
-    handleInput();
+    
+    handleInput(forcedColor);
     updateActiveFormats();
   };
 
   const toggleHighlighter = () => {
     if (!editorRef.current) return;
     editorRef.current.focus();
-    const currentFormats = updateActiveFormats();
-    const isActuallyActive = highlighterMode || currentFormats.highlighter;
+    
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return;
+    
     const range = selection.getRangeAt(0);
-    const highlightColor = '#add8e680';
-
-    if (selection.toString() !== '') {
-      let container: Node | null = selection.anchorNode;
-      let highlighterSpan: HTMLElement | null = null;
-      while (container && container !== editorRef.current) {
-        if (container instanceof HTMLElement && (container.classList.contains('highlighter') || container.style.backgroundColor !== '')) {
-          highlighterSpan = container;
-          break;
-        }
-        container = container.parentNode;
+    const highlightColor = `${selectedTheme.accentColor}44`;
+    
+    // Check if we are currently inside a highlighter span
+    let container: Node | null = selection.anchorNode;
+    let highlighterSpan: HTMLElement | null = null;
+    while (container && container !== editorRef.current) {
+      if (container instanceof HTMLElement && (container.classList.contains('highlighter') || container.style.backgroundColor !== '')) {
+        highlighterSpan = container;
+        break;
       }
+      container = container.parentNode;
+    }
 
-      if (highlighterSpan) {
-        const text = highlighterSpan.innerText;
-        highlighterSpan.replaceWith(document.createTextNode(text));
-        setHighlighterMode(false);
-      } else {
-        const span = document.createElement('span');
-        span.className = 'highlighter';
-        span.style.backgroundColor = highlightColor;
-        span.style.color = 'black';
-        span.appendChild(range.extractContents());
-        range.insertNode(span);
-        setHighlighterMode(true);
-      }
-    } else {
-      if (isActuallyActive) {
-        let container: Node | null = selection.anchorNode;
-        let highlighterSpan: HTMLElement | null = null;
-        while (container && container !== editorRef.current) {
-          if (container instanceof HTMLElement && (container.classList.contains('highlighter') || container.style.backgroundColor !== '')) {
-            highlighterSpan = container;
-            break;
-          }
-          container = container.parentNode;
-        }
-
-        if (highlighterSpan) {
+    if (highlighterSpan) {
+      // Toggle OFF: If selection is collapsed inside or spans it, remove the highlighting
+      if (selection.isCollapsed) {
+        // Just move out of it or unwrap it if it's empty
+        const text = highlighterSpan.innerText.replace(/\u200B/g, '');
+        if (text.length === 0) {
+          highlighterSpan.remove();
+        } else {
+          // If it has text, we just "stop" highlighting for new text by placing cursor after it
           const newRange = document.createRange();
           newRange.setStartAfter(highlighterSpan);
           newRange.collapse(true);
           selection.removeAllRanges();
           selection.addRange(newRange);
-          if (highlighterSpan.nextSibling === null || highlighterSpan.nextSibling.nodeType !== Node.TEXT_NODE) {
-             const textNode = document.createTextNode('\u200B');
-             highlighterSpan.after(textNode);
-             newRange.setStartAfter(textNode);
-             newRange.collapse(true);
-             selection.removeAllRanges();
-             selection.addRange(newRange);
-          }
+          
+          // Insert a zero-width space to "break" out of the span's formatting if needed
+          const zwsp = document.createTextNode('\u200B');
+          newRange.insertNode(zwsp);
+          newRange.setStartAfter(zwsp);
+          newRange.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(newRange);
         }
-        setHighlighterMode(false);
       } else {
+        // Unwrap the selected text from highlighter
+        const text = highlighterSpan.innerText;
+        highlighterSpan.replaceWith(document.createTextNode(text));
+      }
+      setHighlighterMode(false);
+      setHighlighterManuallyDisabled(true);
+    } else {
+      // Toggle ON
+      if (selection.isCollapsed) {
+        // Create a new empty highlighter span and put cursor inside
         const span = document.createElement('span');
         span.className = 'highlighter';
         span.style.backgroundColor = highlightColor;
-        span.style.color = 'black';
-        span.innerHTML = '&#8203;';
+        span.innerHTML = '&#8203;'; // Zero width space
         range.insertNode(span);
-        range.setStartBefore(span.firstChild!);
-        range.setEndAfter(span.firstChild!);
-        range.collapse(false);
+        
+        const newRange = document.createRange();
+        newRange.setStart(span.firstChild!, 1);
+        newRange.collapse(true);
         selection.removeAllRanges();
-        selection.addRange(range);
+        selection.addRange(newRange);
+        
         setHighlighterMode(true);
+        setHighlighterManuallyDisabled(false);
+      } else {
+        // Wrap selection in highlighter span
+        const span = document.createElement('span');
+        span.className = 'highlighter';
+        span.style.backgroundColor = highlightColor;
+        span.appendChild(range.extractContents());
+        range.insertNode(span);
+        
+        setHighlighterMode(true);
+        setHighlighterManuallyDisabled(false);
       }
     }
+    
     handleInput();
     updateActiveFormats();
   };
@@ -408,7 +887,7 @@ export default function MainApp() {
   }, []);
 
   useEffect(() => {
-    if (status.type === 'error' && status.message.includes('Next note available in:')) {
+    if (status.type === 'error' && status.message?.includes('Next note available in:')) {
       const timer = setInterval(() => {
         const remaining = getTimeRemaining();
         if (remaining) {
@@ -495,11 +974,14 @@ export default function MainApp() {
         })
       });
 
-      const saveData = await saveResponse.json();
       if (!saveResponse.ok) {
-        console.error('API Error (Save Note):', saveResponse.status, saveData);
-        throw new Error(saveData.message || saveData.error || 'Failed to save note');
+        const errorData = await saveResponse.json().catch(() => ({}));
+        const errorText = !Object.keys(errorData).length ? await saveResponse.text().catch(() => 'Unknown Error') : '';
+        console.error('API Error (Save Note):', saveResponse.status, errorData, errorText);
+        throw new Error(errorData.message || errorData.error || `Server returned ${saveResponse.status}: ${errorText.slice(0, 100)}`);
       }
+
+      const saveData = await saveResponse.json();
       const { noteId } = saveData;
 
       setStatus({ type: null, message: 'Routing: Dispatching secure link...' });
@@ -545,6 +1027,7 @@ export default function MainApp() {
       setStatus({ type: 'success', message: 'Note Delivered! Your message has been dispatched.' });
       const now = Date.now().toString();
       localStorage.setItem('lastSentTime', now);
+      localStorage.removeItem('unsent_transmission');
       saveToLogs(recipient, content, noteId); // Updated with backend ID
       setNextAvailableTime(getTimeRemaining()); // Provide immediate UI lock
       if (editorRef.current) editorRef.current.innerHTML = '';
@@ -571,15 +1054,43 @@ export default function MainApp() {
     }
   };
 
-  const charCount = editorRef.current?.innerText.length || 0;
+  const charCount = editorRef.current ? editorRef.current.innerText.replace(/\u200B/g, '').replace(/[\n\r]+$/, '').length : 0;
+
+  if (loading) return (
+    <div style={{
+      background: '#0a0a0a',
+      height: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}>
+      <div style={{ color: '#d4a843', fontFamily: 'monospace' }}>
+        Loading transmission...
+      </div>
+    </div>
+  );
+
+  if (error) return (
+    <div style={{
+      background: '#0a0a0a',
+      height: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: '#d4a843',
+      fontFamily: 'monospace'
+    }}>
+      {error}
+    </div>
+  );
 
   return (
-    <div className={`min-h-screen transition-all duration-700 ${selectedTheme.bgClass} flex flex-col font-sans overflow-x-hidden selection:bg-[#b89e7a]/40`}>
-      <header className="pt-8 pb-4 w-full flex justify-center">
+    <div className={`min-h-screen transition-all duration-700 ${selectedTheme?.bgClass ?? 'bg-[#0d0d0d]'} flex flex-col font-sans overflow-x-hidden w-full max-w-[100vw] box-border selection:bg-[#b89e7a]/40`}>
+      <header className="pt-8 pb-4 w-full flex justify-center box-border overflow-hidden">
          <motion.div 
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-4xl px-8 flex flex-col md:flex-row justify-between items-center gap-4"
+          className="w-full max-w-4xl px-4 md:px-8 flex flex-col md:flex-row justify-between items-center gap-4 box-border overflow-hidden"
         >
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 border-2 border-[#b89e7a] flex items-center justify-center text-[#b89e7a] text-2xl font-bold font-serif-elegant">N</div>
@@ -595,10 +1106,19 @@ export default function MainApp() {
         </motion.div>
       </header>
 
-      <main className="flex-1 w-full max-w-4xl mx-auto px-6 py-6 md:py-8 flex flex-col gap-2">
-        <div className="flex justify-end px-2 mb-1">
+      <main className="flex-1 w-full max-w-4xl mx-auto px-4 py-6 md:py-8 flex flex-col gap-2 box-border overflow-hidden">
+        <div className="flex justify-between px-2 mb-1">
+          <div className="text-[10px] text-[#b89e7a]/40 font-mono tracking-widest uppercase py-1">
+            DATE: {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase()}
+          </div>
           <button 
-            onClick={() => setShowLogs(true)}
+            onClick={() => {
+              try {
+                setShowLogs(true);
+              } catch (error) {
+                console.error('Click handler error:', error);
+              }
+            }}
             className="group flex items-center gap-2 text-[10px] font-black text-[#b89e7a] uppercase tracking-[0.4em] hover:text-white transition-colors border-b border-[#b89e7a]/20 pb-1 relative"
           >
             <div className="relative">
@@ -615,27 +1135,27 @@ export default function MainApp() {
           <div className="flex flex-col bg-[#1a1a1a] border border-[#333] rounded-t-sm divide-y divide-[#333]">
             <div className="flex items-center px-4 py-2 md:px-6">
               <div className="flex items-center justify-between w-full overflow-x-auto scrollbar-hide">
-                <button onClick={() => execCommand('formatBlock', 'h2')} className={`p-2 transition-all rounded-sm flex-shrink-0 ${activeFormats.h2 ? 'text-[#b89e7a] bg-white/10' : 'text-white/40 hover:text-white/80'}`} title="Heading"><Heading size={18} /></button>
+                <button onMouseDown={(e) => e.preventDefault()} onClick={() => { try { execCommand('formatBlock', 'h2'); } catch(e) { console.error(e); } }} className={`p-2 transition-all rounded-sm flex-shrink-0 ${activeFormats?.h2 ? 'text-[#b89e7a] bg-white/10' : 'text-white/40 hover:text-white/80'}`} title="Heading"><Heading size={18} /></button>
                 <div className="h-4 w-[1px] bg-[#333] shrink-0 mx-1"></div>
-                <button onClick={() => execCommand('bold')} className={`p-2 transition-all rounded-sm flex-shrink-0 ${activeFormats.bold ? 'text-[#b89e7a] bg-white/10' : 'text-white/40 hover:text-white/80'}`} title="Bold"><Bold size={18} /></button>
-                <button onClick={() => execCommand('italic')} className={`p-2 transition-all rounded-sm flex-shrink-0 ${activeFormats.italic ? 'text-[#b89e7a] bg-white/10' : 'text-white/40 hover:text-white/80'}`} title="Italic"><Italic size={18} /></button>
-                <button onClick={() => execCommand('underline')} className={`p-2 transition-all rounded-sm flex-shrink-0 ${activeFormats.underline ? 'text-[#b89e7a] bg-white/10' : 'text-white/40 hover:text-white/80'}`} title="Underline"><Underline size={18} /></button>
-                <button onClick={toggleHighlighter} className={`p-2 transition-all rounded-sm flex-shrink-0 relative group ${highlighterMode ? 'text-[#b89e7a] bg-white/10' : 'text-white/40 hover:text-white/80'}`} title="Highlighter"><Highlighter size={18} /></button>
-                <button onClick={() => execCommand('formatBlock', 'blockquote')} className={`p-2 transition-all rounded-sm flex-shrink-0 ${activeFormats.blockquote ? 'text-[#b89e7a] bg-white/10' : 'text-white/40 hover:text-white/80'}`} title="Quote"><Quote size={18} fill={activeFormats.blockquote ? "#b89e7a" : "none"} /></button>
+                <button onMouseDown={(e) => e.preventDefault()} onClick={() => { try { execCommand('bold'); } catch(e) { console.error(e); } }} className={`p-2 transition-all rounded-sm flex-shrink-0 ${activeFormats?.bold ? 'text-[#b89e7a] bg-white/10' : 'text-white/40 hover:text-white/80'}`} title="Bold"><Bold size={18} /></button>
+                <button onMouseDown={(e) => e.preventDefault()} onClick={() => { try { execCommand('italic'); } catch(e) { console.error(e); } }} className={`p-2 transition-all rounded-sm flex-shrink-0 ${activeFormats?.italic ? 'text-[#b89e7a] bg-white/10' : 'text-white/40 hover:text-white/80'}`} title="Italic"><Italic size={18} /></button>
+                <button onMouseDown={(e) => e.preventDefault()} onClick={() => { try { execCommand('underline'); } catch(e) { console.error(e); } }} className={`p-2 transition-all rounded-sm flex-shrink-0 ${activeFormats?.underline ? 'text-[#b89e7a] bg-white/10' : 'text-white/40 hover:text-white/80'}`} title="Underline"><Underline size={18} /></button>
+                <button onMouseDown={(e) => e.preventDefault()} onClick={() => { try { toggleHighlighter(); } catch(e) { console.error(e); } }} className={`p-2 transition-all rounded-sm flex-shrink-0 relative group ${highlighterMode ? 'text-[#b89e7a] bg-white/10' : 'text-white/40 hover:text-white/80'}`} title="Highlighter"><Highlighter size={18} /></button>
+                <button onMouseDown={(e) => e.preventDefault()} onClick={() => { try { execCommand('formatBlock', 'blockquote'); } catch(e) { console.error(e); } }} className={`p-2 transition-all rounded-sm flex-shrink-0 ${activeFormats?.blockquote ? 'text-[#b89e7a] bg-white/10' : 'text-white/40 hover:text-white/80'}`} title="Quote"><Quote size={18} fill={activeFormats?.blockquote ? "#b89e7a" : "none"} /></button>
               </div>
             </div>
 
             <div className="flex items-center justify-between px-4 py-2 md:px-6 bg-[#151515] overflow-x-hidden">
               <div className="flex items-center justify-between w-full gap-2 overflow-x-auto scrollbar-hide">
-                <div className="flex items-center gap-1 shrink-0">
-                  <button onClick={() => execCommand('justifyLeft')} className={`p-1.5 transition-all rounded-sm ${activeFormats.justifyLeft ? 'text-[#b89e7a] bg-white/10' : 'text-white/40 hover:text-white/80'}`}><AlignLeft size={18} /></button>
-                  <button onClick={() => execCommand('justifyCenter')} className={`p-1.5 transition-all rounded-sm ${activeFormats.justifyCenter ? 'text-[#b89e7a] bg-white/10' : 'text-white/40 hover:text-white/80'}`}><AlignCenter size={18} /></button>
-                  <button onClick={() => execCommand('justifyRight')} className={`p-1.5 transition-all rounded-sm ${activeFormats.justifyRight ? 'text-[#b89e7a] bg-white/10' : 'text-white/40 hover:text-white/80'}`}><AlignRight size={18} /></button>
-                </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button onMouseDown={(e) => e.preventDefault()} onClick={() => { try { execCommand('justifyLeft'); } catch(e) { console.error(e); } }} className={`p-1.5 transition-all rounded-sm ${activeFormats?.justifyLeft ? 'text-[#b89e7a] bg-white/10' : 'text-white/40 hover:text-white/80'}`}><AlignLeft size={18} /></button>
+                    <button onMouseDown={(e) => e.preventDefault()} onClick={() => { try { execCommand('justifyCenter'); } catch(e) { console.error(e); } }} className={`p-1.5 transition-all rounded-sm ${activeFormats?.justifyCenter ? 'text-[#b89e7a] bg-white/10' : 'text-white/40 hover:text-white/80'}`}><AlignCenter size={18} /></button>
+                    <button onMouseDown={(e) => e.preventDefault()} onClick={() => { try { execCommand('justifyRight'); } catch(e) { console.error(e); } }} className={`p-1.5 transition-all rounded-sm ${activeFormats?.justifyRight ? 'text-[#b89e7a] bg-white/10' : 'text-white/40 hover:text-white/80'}`}><AlignRight size={18} /></button>
+                  </div>
                 <div className="h-4 w-[1px] bg-[#333] shrink-0"></div>
                 <div className="flex gap-2.5 p-1 bg-black/40 rounded-sm border border-white/5 overflow-x-auto scrollbar-hide flex-1 justify-between px-2">
-                  {['#ffffff', '#000000', '#b89e7a', '#ff4d4d', '#4dff4d', '#4d4dff', '#ffff4d'].map(color => (
-                    <button key={color} onMouseDown={(e) => { e.preventDefault(); execCommand('foreColor', color); }} className={`w-4 h-4 rounded-sm hover:scale-110 active:scale-95 transition-all shadow-[0_0_5px_rgba(0,0,0,0.5)] border shrink-0 ${activeTextColor === color ? 'border-white scale-110 ring-1 ring-[#b89e7a]' : 'border-white/10'}`} style={{ backgroundColor: color }} />
+                  {['#ffffff', '#000000', '#b89e7a', '#ff4d4d', '#4dff4d', '#4d4dff', '#ffff4d'].map((color, idx) => (
+                    <button key={`palette-${color}-${idx}`} onMouseDown={(e) => { e.preventDefault(); execCommand('foreColor', color); }} className={`w-4 h-4 rounded-sm hover:scale-110 active:scale-95 transition-all shadow-[0_0_5px_rgba(0,0,0,0.5)] border shrink-0 ${activeTextColor === color ? 'border-white scale-110 ring-1 ring-[#b89e7a]' : 'border-white/10'}`} style={{ backgroundColor: color }} />
                   ))}
                 </div>
               </div>
@@ -643,16 +1163,146 @@ export default function MainApp() {
           </div>
 
           <AnimatePresence>
-            <motion.div id="note-card" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={`min-h-[420px] p-10 md:p-16 relative flex flex-col transition-all duration-1000 ${selectedTheme.paperClass} ${selectedTheme.fontClass}`}>
-              <div className="flex justify-between border-b border-current opacity-20 pb-2 mb-10">
-                <span className="font-telegraph text-[10px] uppercase italic">Dispatch No. {Math.floor(Math.random() * 999)}-X</span>
-                <span className="font-telegraph text-[10px] uppercase">Date: {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}</span>
-              </div>
-              <div ref={editorRef} contentEditable onInput={handleInput} onKeyDown={(e) => { if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Backspace', 'Delete', 'Enter'].includes(e.key)) setTimeout(updateActiveFormats, 0); }} className={`flex-1 outline-none text-xl md:text-2xl leading-relaxed whitespace-pre-wrap ${selectedTheme.fontClass} min-h-[250px] empty:before:content-[attr(data-placeholder)] empty:before:opacity-20`} data-placeholder="Compose your secure transmission here..." />
+            <motion.div id="note-card" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={`min-h-[500px] p-10 md:p-16 relative flex flex-col transition-all duration-1000 rounded-b-sm ${selectedTheme.paperClass} ${selectedTheme.fontClass}`}>
+              <div ref={editorRef} contentEditable onKeyDown={(e) => { 
+                if (e.key === 'Enter') {
+                  const selection = window.getSelection();
+                  if (selection && selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+                    let temp = range.commonAncestorContainer as Node | null;
+                    let quoteNode: HTMLElement | null = null;
+                    while (temp && temp !== editorRef.current) {
+                      if (temp.nodeName === 'BLOCKQUOTE') {
+                        quoteNode = temp as HTMLElement;
+                        break;
+                      }
+                      temp = temp.parentNode;
+                    }
+
+                    if (quoteNode) {
+                      e.preventDefault();
+                      
+                      const container = range.startContainer;
+                      const textContent = container.textContent || '';
+                      
+                      // Double Enter detection:
+                      // If the current node (likely a text node or BR) is essentially empty
+                      const isEmptyLine = textContent.replace(/\u200B/g, '').trim() === '' && 
+                                          (container === quoteNode || container.parentNode === quoteNode);
+
+                      if (isEmptyLine && quoteNode.innerText.replace(/\u200B/g, '').trim() === '') {
+                        // Truly empty quote - exit it
+                        const div = document.createElement('div');
+                        div.innerHTML = '<br>';
+                        quoteNode.parentNode?.replaceChild(div, quoteNode);
+                        
+                        const newRange = document.createRange();
+                        newRange.setStart(div, 0);
+                        newRange.collapse(true);
+                        selection.removeAllRanges();
+                        selection.addRange(newRange);
+                        handleInput();
+                        setTimeout(updateActiveFormats, 0);
+                        return;
+                      }
+                      
+                      // If we are at an empty line within the quote (double enter check)
+                      if (isEmptyLine) {
+                         // Exit quote by moving to next line
+                         const div = document.createElement('div');
+                         div.innerHTML = '<br>';
+                         
+                         // If there's text after the cursor, we shouldn't exit just like that, but here we assume end of quote
+                         if (quoteNode.nextSibling) {
+                           quoteNode.parentNode?.insertBefore(div, quoteNode.nextSibling);
+                         } else {
+                           quoteNode.parentNode?.appendChild(div);
+                         }
+                         
+                         const newRange = document.createRange();
+                         newRange.setStart(div, 0);
+                         newRange.collapse(true);
+                         selection.removeAllRanges();
+                         selection.addRange(newRange);
+                         handleInput();
+                         setTimeout(updateActiveFormats, 0);
+                         return;
+                      }
+
+                      // Normal Enter: Insert a line break and stay in quote
+                      document.execCommand('insertHTML', false, '<br>\u200B');
+                      setTimeout(() => {
+                        handleInput();
+                        updateActiveFormats();
+                      }, 0);
+                      return;
+                    } else {
+                      setTimeout(() => {
+                        handleInput();
+                        updateActiveFormats();
+                      }, 0);
+                    }
+                  }
+                }
+
+                if (e.key === 'Backspace') {
+                  const selection = window.getSelection();
+                  if (selection && selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+                    let container = range.commonAncestorContainer;
+                    
+                    // Traverse up to see if we are in a blockquote
+                    let quoteNode: HTMLElement | null = null;
+                    let temp = container as Node | null;
+                    while (temp && temp !== editorRef.current) {
+                      if (temp.nodeName === 'BLOCKQUOTE') {
+                        quoteNode = temp as HTMLElement;
+                        break;
+                      }
+                      temp = temp.parentNode;
+                    }
+
+                    if (quoteNode) {
+                      // Check if cursor is at the very beginning of the blockquote
+                      const rangeToStart = document.createRange();
+                      rangeToStart.setStart(quoteNode, 0);
+                      rangeToStart.setEnd(range.startContainer, range.startOffset);
+                      
+                      const contentAtStart = rangeToStart.toString().replace(/\u200B/g, '');
+                      const totalContent = quoteNode.innerText.replace(/\u200B/g, '').trim();
+
+                      // Only "untoggle" if the selection is collapsed AND at the beginning or the quote is empty
+                      if (range.collapsed && (contentAtStart === '' || totalContent === '')) {
+                        e.preventDefault();
+                        if (totalContent === '') {
+                           const div = document.createElement('div');
+                           div.innerHTML = '<br>';
+                           quoteNode.parentNode?.replaceChild(div, quoteNode);
+                           const newRange = document.createRange();
+                           newRange.setStart(div, 0);
+                           newRange.collapse(true);
+                           selection.removeAllRanges();
+                           selection.addRange(newRange);
+                        } else {
+                           document.execCommand('formatBlock', false, 'div');
+                        }
+                        setTimeout(updateActiveFormats, 0);
+                        return;
+                      }
+                    }
+                  }
+                }
+                if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Backspace', 'Delete', 'Enter'].includes(e.key)) {
+                  setTimeout(updateActiveFormats, 0);
+                }
+              }} 
+              onInput={() => handleInput()}
+              className={`flex-1 outline-none text-xl md:text-2xl leading-relaxed whitespace-pre-wrap ${selectedTheme.fontClass} min-h-[350px] empty:before:content-[attr(data-placeholder)] empty:before:opacity-20`} data-placeholder="Compose your secure transmission here..." />
               <div className="mt-8 flex justify-between items-end relative">
                 <div className="flex flex-col items-start translate-y-1">
-                   <div className={`text-[10px] uppercase tracking-wider font-mono opacity-90 ${charCount > CHAR_LIMIT ? 'text-red-500 font-bold opacity-100 scale-110 origin-left' : ''}`}>
-                    {charCount} / {CHAR_LIMIT}
+                  <div className="char-count text-[11px] font-black uppercase tracking-[0.3em] transition-all duration-300" style={{ color: charCount > CHAR_LIMIT ? '#ef4444' : selectedTheme.accentColor }}>
+                    <span className="opacity-100">{charCount}</span>
+                    <span className="opacity-100 ml-1">/ {CHAR_LIMIT}</span>
                   </div>
                 </div>
                 <img src={`data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 60 60'><circle cx='30' cy='30' r='29' fill='none' stroke='${selectedTheme.accentColor}' stroke-width='0.3' opacity='0.4'/><circle cx='30' cy='30' r='25' fill='none' stroke='${selectedTheme.accentColor}' stroke-width='0.5' stroke-dasharray='4 2' opacity='0.6'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='serif' font-size='6.5' font-weight='bold' fill='${selectedTheme.accentColor}' opacity='0.6' transform='rotate(-15 30 30)'>NONAMENOTE</text></svg>`)}`} className="w-20 h-20 pointer-events-none" alt="stamped" />
@@ -675,34 +1325,43 @@ export default function MainApp() {
               </div>
             </div>
             <div ref={themeScrollRef} className="flex gap-4 overflow-x-auto scrollbar-hide snap-x py-1">
-              {THEMES.map((theme) => (
-                <button key={theme.id} onClick={() => setSelectedTheme(theme)} className={`flex-shrink-0 w-24 h-14 rounded-md transition-all border snap-start flex items-center justify-center p-1 relative overflow-hidden group ${selectedTheme.id === theme.id ? 'border-[#b89e7a] scale-105 shadow-xl z-10' : 'border-[#333] opacity-60 hover:opacity-100 hover:border-[#555]'} ${theme.bgClass}`}>
-                  <div className={`w-full h-full rounded-sm flex items-center justify-center text-[8px] uppercase font-black text-center leading-tight transition-all ${theme.paperClass} ${theme.fontClass} border-0 shadow-none`}><span className="relative z-50">{theme.name.replace(' ', '\n')}</span></div>
+              {(THEMES || []).map((theme, i) => (
+                <button key={`theme-select-${theme?.id || i}-${i}`} onClick={() => { try { setSelectedTheme(theme); } catch(e) { console.error(e); } }} className={`flex-shrink-0 w-24 h-14 rounded-md transition-all border snap-start flex items-center justify-center p-1 relative overflow-hidden group ${selectedTheme?.id === theme?.id ? 'border-[#b89e7a] scale-105 shadow-xl z-10' : 'border-[#333] opacity-60 hover:opacity-100 hover:border-[#555]'} ${theme?.bgClass ?? ''}`}>
+                  <div className={`w-full h-full rounded-sm flex items-center justify-center text-[8px] uppercase font-black text-center leading-tight transition-all ${theme?.paperClass ?? ''} ${theme?.fontClass ?? ''} border-0 shadow-none`}><span className="relative z-50">{theme?.name?.replace(' ', '\n') ?? 'Theme'}</span></div>
                  </button>
               ))}
             </div>
           </div>
         </section>
 
-        <section className="flex flex-col gap-4 mt-4 items-center">
-          <button 
-            ref={sendButtonRef} 
-            onClick={() => handleSend('link')} 
-            disabled={isSending || charCount > CHAR_LIMIT || !!nextAvailableTime} 
-            className={`w-full font-bold py-4 uppercase tracking-[0.2em] text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-3 relative overflow-hidden
-              ${!!nextAvailableTime 
-                ? 'bg-[#333] text-white/20 cursor-not-allowed opacity-50' 
-                : 'bg-[#b89e7a] text-[#0d0d0d] hover:bg-[#c9bda4] shadow-xl'
-              }
-            `}
-          >
-            {isSending && !showSendAnimation ? (
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-black/20 border-t-black rounded-full animate-spin" />
-                <span className="animate-pulse">{status.message || "Initializing..."}</span>
-              </div>
-            ) : !!nextAvailableTime ? "LIMIT REACHED" : "SEND TEXT ANONYMOUSLY"}
-          </button>
+        <section className="flex flex-col gap-3 mt-4 items-center">
+          <div className="w-full grid grid-cols-1 gap-3">
+            <button 
+              onClick={handleSaveDraft}
+              disabled={isSending || !hasActualText(content) || content === loadedDraftContent}
+              className={`w-full font-bold py-3 uppercase tracking-[0.2em] text-[10px] bg-white/5 text-white/60 hover:bg-white/10 transition-all border border-white/10 rounded-sm active:scale-[0.98] ${(!hasActualText(content) || content === loadedDraftContent) ? 'opacity-30 cursor-not-allowed' : ''}`}
+            >
+              SAVE AS DRAFT
+            </button>
+            <button 
+              ref={sendButtonRef} 
+              onClick={() => handleSend('link')} 
+              disabled={isSending || charCount > CHAR_LIMIT || !!nextAvailableTime} 
+              className={`w-full font-black py-5 uppercase tracking-[0.3em] text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-3 relative overflow-hidden rounded-sm
+                ${!!nextAvailableTime 
+                  ? 'bg-[#333] text-white/20 cursor-not-allowed opacity-50' 
+                  : 'bg-[#b89e7a] text-[#0d0d0d] hover:bg-[#c9bda4] shadow-xl'
+                }
+              `}
+            >
+              {isSending && !showSendAnimation ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+                  <span className="animate-pulse">{status.message || "Initializing..."}</span>
+                </div>
+              ) : !!nextAvailableTime ? "LIMIT REACHED" : "SEND TEXT ANONYMOUSLY"}
+            </button>
+          </div>
           
           {nextAvailableTime && (
             <div className="flex items-center gap-2 text-[#b89e7a]/40 font-bold text-[9px] uppercase tracking-[0.2em] animate-pulse">
@@ -713,7 +1372,7 @@ export default function MainApp() {
         </section>
           <AnimatePresence>
             {status.type && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className={`p-4 border text-[11px] uppercase tracking-[0.1em] font-bold flex items-center gap-3 ${status.type === 'success' ? 'bg-green-500/5 text-green-400 border-green-500/20' : 'bg-red-500/5 text-red-400 border-red-500/20'}`}>
+              <motion.div key={`status-message-${status.type}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className={`p-4 border text-[11px] uppercase tracking-[0.1em] font-bold flex items-center gap-3 ${status.type === 'success' ? 'bg-green-500/5 text-green-400 border-green-500/20' : 'bg-red-500/5 text-red-400 border-red-500/20'}`}>
                 {status.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
                 {status.message}
               </motion.div>
@@ -725,213 +1384,384 @@ export default function MainApp() {
       <AnimatePresence>
         {showLogs && (
           <motion.div 
+            key="logs-modal-overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md"
-            onClick={() => { setShowLogs(false); setActiveLogThread(null); }}
+            onClick={() => {
+              try {
+                setShowLogs(false); 
+                setActiveLogThread(null);
+              } catch (error) {
+                console.error('Click handler error:', error);
+              }
+            }}
           >
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className={`w-full ${activeLogThread ? 'max-w-3xl' : 'max-w-lg'} bg-[#1a1a1a] border border-white/5 p-8 flex flex-col gap-6 max-h-[85vh] overflow-hidden relative transition-all duration-300`}
+              className={`w-full ${activeLogThread ? 'max-w-2xl' : 'max-w-lg'} bg-[#0a0a0a] border border-white/10 px-0 sm:px-5 py-8 flex flex-col gap-6 max-h-[90vh] overflow-hidden relative transition-all duration-300 rounded-[24px] shadow-[#d4a84310]/30 shadow-2xl box-border mx-auto`}
               onClick={e => e.stopPropagation()}
             >
-              <div className="flex justify-between items-center border-b border-white/5 pb-6">
-                <div className="flex flex-col">
-                  <h3 className="text-[#b89e7a] font-serif text-xl tracking-tight">
-                    {activeLogThread ? 'Transmission Thread' : 'Transmission Logs'}
-                  </h3>
-                  {activeLogThread && (
-                    <button 
-                      onClick={() => { setActiveLogThread(null); setActiveNoteData(null); }}
-                      className="text-[9px] text-white/30 uppercase tracking-[0.2em] font-bold hover:text-white transition-colors mt-1 flex items-center gap-1"
-                    >
-                      ← Back to archives
-                    </button>
-                  )}
+              <div className="flex justify-between items-center border-b border-white/5 pb-6 px-5 sm:px-8">
+                <div className="flex items-center gap-4">
+                  <button 
+                    onClick={() => {
+                      if (activeLogThread) {
+                        setActiveLogThread(null);
+                        setActiveNoteData(null);
+                      } else {
+                        setShowLogs(false);
+                      }
+                    }}
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-[#b89e7a] hover:bg-[#1a1a1a] transition-colors -ml-3"
+                  >
+                    <ArrowLeft size={24} />
+                  </button>
+                  <div className="flex flex-col">
+                    <h3 className="text-white font-bold leading-tight text-[18px] text-left" style={{ fontFamily: 'Arial, sans-serif' }}>
+                      {activeLogThread ? 'Transmission Thread' : 'Transmission Logs'}
+                    </h3>
+                    <p className="text-[8px] text-[#b89e7a] uppercase tracking-[0.4em] font-medium mt-1 text-left">
+                      {activeLogThread ? 'VIEW LOGS & RESPONSES' : 'ARCHIVED DISPATCHES'}
+                    </p>
+                  </div>
                 </div>
-                <button onClick={() => { setShowLogs(false); setActiveLogThread(null); setActiveNoteData(null); }} className="p-2 -mr-2 text-white/40 hover:text-white transition-colors">
-                  <X size={20} />
-                </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar py-8 relative">
                 {!activeLogThread ? (
                   // List View
-                  logs.length === 0 ? (
-                    <div className="py-20 text-center text-white/60 italic text-sm tracking-wider">No archives found...</div>
-                  ) : (
-                    <div className="flex flex-col gap-6">
-                      {logs.map(log => (
-                        <div 
-                          key={log.id} 
-                          onClick={async () => {
-                            if (log.noteId) {
-                              setActiveLogThread(log.noteId);
-                              // Mark all replies in this thread as read locally
-                              setLogs(prev => {
-                                const next = prev.map(l => l.noteId === log.noteId ? { ...l, hasUnread: false } : l);
-                                localStorage.setItem('sentNotesLog', JSON.stringify(next));
-                                return next;
-                              });
-
-                              // Fetch full note data for theme and content
-                              try {
-                                const response = await fetch('/api/get-note', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ noteId: log.noteId })
-                                });
-                                if (response.ok) {
-                                  const { note } = await response.json();
-                                  setActiveNoteData(note);
-                                }
-                              } catch (e) {
-                                console.error("Error fetching note details", e);
-                              }
-                            }
-                          }}
-                          className={`group border-b border-white/5 pb-4 pt-2 cursor-pointer hover:bg-white/[0.02] transition-colors -mx-2 px-2 rounded-sm ${log.hasUnread ? 'bg-red-500/[0.03]' : ''}`}
+                  <>
+                    <div className="flex items-center gap-2 mb-6 overflow-x-auto scrollbar-hide py-1 px-5 sm:px-8">
+                      {['ALL', 'DRAFT', 'UNREAD', 'SEEN', 'DELIVERED'].map((f) => (
+                        <button 
+                          key={`filter-${f}`}
+                          onClick={() => setActiveFilter(f as any)}
+                          className={`text-[8px] font-black uppercase tracking-[0.2em] px-4 py-2 transition-all border shrink-0 rounded-lg ${activeFilter === f ? 'bg-[#b89e7a] text-black border-[#b89e7a] shadow-lg shadow-[#b89e7a]/20' : 'text-white/40 border-white/10 hover:border-white/30 hover:text-white/60 bg-white/5'}`}
                         >
-                          <div className="flex justify-between items-center mb-1">
-                            <span className="text-[10px] font-black text-[#b89e7a] tracking-wider break-all">{log.recipient}</span>
-                            <span className="text-[8px] text-white/20 font-mono flex-shrink-0">
-                              {!isNaN(new Date(log.timestamp).getTime()) ? new Date(log.timestamp).toLocaleDateString() : 'unknown'}
-                            </span>
-                          </div>
-                          
-                          <div 
-                            className="text-[11px] text-white/40 truncate italic pr-4 mb-2"
-                            dangerouslySetInnerHTML={{ 
-                              __html: log.content.replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi, '$1').replace(/<[^>]+>/g, ' ') 
-                            }}
-                          />
-
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <span className={`text-[7px] font-black tracking-[0.2em] uppercase px-1.5 py-0.5 rounded-xs ${log.opened ? 'bg-green-500/10 text-green-400' : 'bg-blue-500/10 text-blue-400'}`}>
-                                {log.opened ? 'Seen' : 'Delivered'}
-                              </span>
-                              {log.opened && log.openedAt && !isNaN(new Date(log.openedAt).getTime()) && (
-                                <span className="text-[7px] text-white/20 font-mono italic">
-                                  {new Date(log.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                              )}
-                            </div>
-                            
-                            {log.replyCount ? (
-                              <div className="flex items-center gap-2 px-2 py-0.5 bg-white/5 rounded-full border border-white/5">
-                                <div className="relative flex items-center">
-                                  <span className="text-[9px]">💬</span>
-                                  {log.hasUnread && (
-                                    <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-green-500 rounded-full shadow-[0_0_4px_rgba(34,197,94,0.6)] animate-pulse" />
-                                  )}
-                                </div>
-                                <span className="text-[8px] font-mono text-white/60">{log.replyCount}</span>
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
+                          {f}
+                        </button>
                       ))}
                     </div>
-                  )
+                    {(() => {
+                      const filteredLogs = logs.filter(log => {
+                        if (activeFilter === 'ALL') return true;
+                        if (activeFilter === 'DRAFT') return log.isDraft;
+                        if (activeFilter === 'UNREAD') return !log.isDraft && log.hasUnread;
+                        if (activeFilter === 'SEEN') return !log.isDraft && log.opened;
+                        if (activeFilter === 'DELIVERED') return !log.isDraft && !log.opened;
+                        return true;
+                      });
+
+                      return filteredLogs.length === 0 ? (
+                        <div className="py-20 text-center text-white/60 italic text-sm tracking-wider">No transmissions in this category...</div>
+                      ) : (
+                        <div className="flex flex-col gap-6 px-5 sm:px-8">
+                            {filteredLogs.map((log, idx) => (
+                              <div key={`log-container-${log.id || log.noteId || idx}`} className="relative overflow-hidden">
+                                {/* Delete Background Indicator */}
+                                <div className="absolute inset-0 bg-red-900/40 flex items-center justify-end px-6 rounded-sm">
+                                  <span className="text-[8px] font-black text-red-400 uppercase tracking-widest">Delete</span>
+                                </div>
+                                
+                                <motion.div 
+                                  key={`archived-log-${log.id || log.noteId || `idx-${idx}`}`}
+                                  drag="x"
+                                  dragDirectionLock
+                                  dragConstraints={{ left: -120, right: 0 }}
+                                  dragElastic={0.1}
+                                  onDragEnd={(_, info) => {
+                                    if (info.offset.x < -80) {
+                                      handleDeleteLog(log.id || log.noteId || "");
+                                    }
+                                  }}
+                                  onClick={async () => {
+                                  try {
+                                    if (log.isDraft) {
+                                      loadDraft(log);
+                                      return;
+                                    }
+                                    if (log?.noteId) {
+                                      // Immediately set basic data to reveal UI instantly
+                                      setActiveNoteData({
+                                        noteHTML: log.content || '',
+                                        timestamp: log.timestamp,
+                                        opened: !!log.opened,
+                                        openedAt: log.openedAt,
+                                        recipient: log.recipient
+                                      } as any);
+                                      
+                                      setActiveLogThread(log.noteId);
+                                      
+                                      // Local state update
+                                      setLogs(prev => {
+                                        const next = prev.map(l => l?.noteId === log.noteId ? { ...l, hasUnread: false } : l);
+                                        localStorage.setItem('sentNotesLog', JSON.stringify(next));
+                                        return next;
+                                      });
+        
+                                      // Background fetch for freshest status and replies
+                                      fetch('/api/get-note', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ noteId: log.noteId, markSeen: false })
+                                      }).then(res => {
+                                        if (res?.ok) return res.json();
+                                      }).then(data => {
+                                        if (data?.note) {
+                                          setActiveNoteData(data.note);
+                                        }
+                                      }).catch(err => console.error("Archive fetch error:", err));
+                                    }
+                                  } catch (error) {
+                                    console.error('Click handler error:', error);
+                                  }
+                                }}
+                                className={`group border-b border-white/5 pb-4 pt-2 cursor-pointer bg-[#121212] transition-colors px-2 rounded-sm relative z-10 ${log.hasUnread ? 'bg-red-500/[0.03]' : ''}`}
+                              >
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className={`text-[10px] font-black tracking-wider break-all ${log.isDraft ? 'text-white/40' : 'text-[#b89e7a]'}`}>
+                                    {log.isDraft ? '[DRAFT]' : ''} {log.recipient || 'No Recipient'}
+                                  </span>
+                                  <span className="text-[8px] text-white/20 font-mono flex-shrink-0">
+                                    {!isNaN(new Date(log.timestamp).getTime()) ? new Date(log.timestamp).toLocaleDateString() : 'unknown'}
+                                  </span>
+                                </div>
+                                
+                                <div 
+                                  className="text-[11px] text-white/40 truncate italic pr-4 mb-2"
+                                  dangerouslySetInnerHTML={{ 
+                                    __html: (log.content || '').replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi, '$1').replace(/<[^>]+>/g, ' ') 
+                                  }}
+                                />
+
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    {log.isDraft ? (
+                                      <span className="text-[7px] font-black tracking-[0.2em] uppercase px-1.5 py-0.5 rounded-xs bg-white/5 text-white/40">Local Draft</span>
+                                    ) : (
+                                      <>
+                                        <span className={`text-[7px] font-black tracking-[0.2em] uppercase px-1.5 py-0.5 rounded-xs ${log.opened ? 'bg-green-500/10 text-green-400' : 'bg-blue-500/10 text-blue-400'}`}>
+                                          {log.opened ? 'Seen' : 'Delivered'}
+                                        </span>
+                                        {log.opened && log.openedAt && !isNaN(new Date(log.openedAt).getTime()) && (
+                                          <span className="text-[7px] text-white/20 font-mono italic">
+                                            {new Date(log.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                          </span>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                  
+                                  {!log.isDraft && log.replyCount ? (
+                                    <div className="flex items-center gap-2 px-2 py-0.5 bg-white/5 rounded-full border border-white/5">
+                                      <div className="relative flex items-center">
+                                        <span className="text-[9px]">💬</span>
+                                        {log.hasUnread && (
+                                          <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-green-500 rounded-full shadow-[0_0_4px_rgba(34,197,94,0.6)] animate-pulse" />
+                                        )}
+                                      </div>
+                                      <span className="text-[8px] font-mono text-white/60">{log.replyCount}</span>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              </motion.div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </>
                 ) : (
                   // Thread View
-                  <div className="flex flex-col gap-3 py-2">
-                    {/* Original Message */}
-                    <div className="relative group">
-                      <div className="absolute top-2 left-4 z-10 bg-black/60 backdrop-blur-sm px-2 py-1 rounded text-[8px] uppercase tracking-widest font-black text-white/80 border border-white/5">Original Dispatch</div>
+                  <div className="w-full h-full p-0 m-0 overflow-x-visible box-border relative">
+                    {(() => {
+                      const isSeen = activeNoteData?.opened;
+                      const statusColor = isSeen ? '#4caf50' : '#2196f3';
+                      const statusGlow = isSeen ? 'rgba(76,175,80,0.2)' : 'rgba(33,150,243,0.2)';
                       
-                      {activeNoteData ? (
-                        <div className="rounded-sm overflow-hidden border border-white/10 shadow-2xl bg-black/40">
-                          <div 
-                            className="pointer-events-none select-none flex justify-center py-4 md:py-6"
-                            style={{ 
-                              background: activeNoteData.theme_bg
-                            }}
-                          >
-                            <div 
-                              className="scale-[0.7] sm:scale-100 origin-top"
-                              dangerouslySetInnerHTML={{ __html: activeNoteData.noteHTML }} 
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="bg-white/5 border border-white/5 rounded-sm p-8 italic text-[11px] text-white/60">
-                           <div dangerouslySetInnerHTML={{ __html: logs.find(l => l.noteId === activeLogThread)?.content || '' }} />
-                           <div className="mt-2 pt-2 border-t border-white/5 text-[9px] opacity-40 uppercase tracking-widest font-bold">Fetching transmission history...</div>
-                        </div>
-                      )}
+                      return (
+                        <>
+                          <div className="flex flex-row items-start w-full overflow-visible box-border px-5 sm:px-8">
+                            {/* Right Column: Cards and Content */}
+                            <div className="flex-1 min-w-0 pl-[48px] flex flex-col gap-0 overflow-visible box-border relative pb-10">
+                            {/* Card 1: Original Dispatch */}
+                              <div className="mb-[24px] w-full box-border overflow-visible relative">
+                                {/* Segmented Line Part 1: Yellow line from dispatch downwards, transitioning to status color */}
+                                <div className="absolute left-[-32px] top-8 bottom-[-24px] w-[1px]" 
+                                  style={{ background: `linear-gradient(to bottom, #d4a843 0%, #d4a843 60%, ${statusColor} 100%)` }} 
+                                />
+                                
+                                {/* Icon 1: Paper Plane in front of notch */}
+                                <div className="absolute left-[-32px] top-8 -translate-x-1/2 -translate-y-1/2 z-20">
+                                  <div className="w-8 h-8 rounded-full bg-[#0a0a0a] border border-[#d4a843] flex items-center justify-center text-[#d4a843] shadow-[0_0_20px_rgba(212,168,67,0.15)] shrink-0">
+                                    <Send size={14} />
+                                  </div>
+                                </div>
 
-                      <div className="mt-1 flex items-center justify-between px-1">
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[7px] font-black uppercase tracking-widest px-1 py-0.5 rounded-sm ${logs.find(l => l.noteId === activeLogThread)?.opened ? 'text-green-400' : 'text-blue-400'}`}>
-                            ● {logs.find(l => l.noteId === activeLogThread)?.opened ? 'Seen' : 'Delivered'}
-                          </span>
-                          {logs.find(l => l.noteId === activeLogThread)?.openedAt && !isNaN(new Date(logs.find(l => l.noteId === activeLogThread)!.openedAt!).getTime()) && (
-                            <span className="text-[7px] text-white/20 font-mono italic">
-                              at {new Date(logs.find(l => l.noteId === activeLogThread)!.openedAt!).toLocaleString([], { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                                <div className="bg-[#1c1c1c] rounded-[14px] p-6 border border-[#d4a843]/20 shadow-[0_0_20px_rgba(212,168,67,0.08)] w-full box-border timeline-card">
+                                   <div className="text-white font-mono text-sm leading-relaxed mb-6 break-words whitespace-pre-wrap text-justify">
+                                    {activeNoteData?.noteHTML ? (
+                                      String(activeNoteData.noteHTML)
+                                        .replace(/<[^>]+>/g, ' ')
+                                        .replace(/Dispatch No\.[^]*?\d{2}-\d{3}-[A-Z]/gi, '')
+                                        .replace(/Date:[^]*?\d{2}\s[A-Z][a-z]+\s\d{4}/gi, '')
+                                        .replace(/\d+\s*\/\s*\d{3,4}/g, '') 
+                                        .replace(/\s+/g, ' ')
+                                        .trim()
+                                    ) : (activeNoteData ? "Content processing..." : "Awaiting dispatch...")}
+                                   </div>
+                                   <div className="flex justify-end items-center text-[10px] font-mono">
+                                     <span className="text-[#666666]">
+                                       {activeNoteData?.timestamp ? (
+                                         <>
+                                           <span>{new Date(activeNoteData.timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                           <span className="mx-2 opacity-30">|</span>
+                                           <span>{new Date(activeNoteData.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
+                                         </>
+                                       ) : ''}
+                                     </span>
+                                   </div>
+                                </div>
+                              </div>
 
-                    <div className="flex justify-center relative h-3">
-                      <div className="w-[1px] h-full bg-gradient-to-b from-white/10 to-transparent" />
-                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#1a1a1a] px-1 py-0.5 text-[#b89e7a] opacity-30 animate-bounce text-[8px]">↓</div>
-                    </div>
+                              {/* Status Label Row: Aligned with Status Icon */}
+                              <div className="h-8 flex items-center mb-[24px] w-full box-border overflow-visible relative">
+                                {/* Segmented Line Part 2: Status color line through status icon */}
+                                <div className="absolute left-[-32px] top-0 bottom-[-24px] w-[1px]" style={{ backgroundColor: statusColor }} />
 
-                    {/* Replies */}
-                    <div className="flex flex-col gap-2">
-                      {(replies[activeLogThread] || []).length === 0 ? (
-                        <div className="text-center py-6 opacity-20 italic text-xs">Awaiting anonymous response...</div>
-                      ) : (
-                        replies[activeLogThread].map((reply: any) => {
-                          const replyTimeRaw = reply.timestamp;
-                          const replyTime = typeof replyTimeRaw === 'number' 
-                            ? replyTimeRaw 
-                            : (replyTimeRaw?.seconds ? replyTimeRaw.seconds * 1000 : new Date(replyTimeRaw).getTime());
-                          
-                          // Mark as read in Firestore if needed
-                          if (!reply.read) {
-                            fetch('/api/mark-reply-read', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ 
-                                noteId: activeLogThread,
-                                replyId: reply.id
-                              })
-                            }).catch(err => console.error("Failed to mark read", err));
-                          }
-                          
-                          return (
-                            <div key={reply.id} className="bg-[#b89e7a]/5 border border-[#b89e7a]/10 rounded-sm p-6 relative group transition-all hover:bg-[#b89e7a]/10">
-                              <div className="absolute -top-3 left-4 bg-[#1a1a1a] px-2 text-[8px] uppercase tracking-widest font-black text-[#b89e7a]">💬 Response Received</div>
-                              <p className="text-[12px] leading-relaxed text-white/90 font-serif mb-4">"{reply.message}"</p>
-                              <div 
-                                className="text-[9px] text-[#b89e7a]/40 font-mono tracking-widest uppercase text-right cursor-pointer hover:text-[#b89e7a] transition-colors select-none"
-                                onClick={() => setShowFullTime(prev => ({...prev, [reply.id]: !prev[reply.id]}))}
-                              >
-                                {showFullTime[reply.id] 
-                                  ? new Date(replyTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
-                                  : getRelativeTime(replyTime)
-                                }
+                                {/* Icon 2: Eye icon in front of seen text */}
+                                <div className="absolute left-[-32px] top-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
+                                  <div className="w-8 h-8 rounded-full bg-[#0a0a0a] border flex items-center justify-center transition-all duration-700 shrink-0"
+                                    style={{ 
+                                      borderColor: statusColor,
+                                      color: statusColor,
+                                      boxShadow: `0 0 20px ${statusGlow}`
+                                    }}
+                                  >
+                                    {isSeen ? <Eye size={15} /> : <CheckCheck size={15} />}
+                                  </div>
+                                </div>
+
+                                <span className="font-mono text-xs sm:text-sm font-bold uppercase tracking-widest truncate" style={{ color: statusColor ?? '#d4a843' }}>
+                                  {isSeen ? 'Seen' : 'Delivered'}
+                                </span>
+                                <span className="text-white/20 font-mono text-[9px] sm:text-[10px] ml-3 uppercase tracking-tighter shrink-0">
+                                  {isSeen && activeNoteData?.openedAt ? 
+                                    new Date(activeNoteData.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : 
+                                    activeNoteData?.timestamp ? new Date(activeNoteData.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : ''
+                                  }
+                                </span>
+                              </div>
+
+                              {/* Card 2: Response */}
+                              <div className="mt-0 w-full box-border overflow-visible relative">
+                                {/* Segmented Line Part 3: Transitions from status color back to yellow at the message bubble */}
+                                <div className="absolute left-[-32px] top-0 bottom-[-32px] w-[1px]" 
+                                  style={{ background: `linear-gradient(to bottom, ${statusColor} 0%, ${statusColor} 16px, #d4a843 32px, #d4a843 100%)` }} 
+                                />
+                                
+                                {/* Icon 3: Message icon in front of response notch */}
+                                <div className="absolute left-[-32px] top-8 -translate-x-1/2 -translate-y-1/2 z-20">
+                                  <div className="w-8 h-8 rounded-full bg-[#0a0a0a] border border-[#d4a843] flex items-center justify-center text-[#d4a843] shadow-[0_0_20px_rgba(212,168,67,0.15)] shrink-0">
+                                    <MessageCircle size={14} />
+                                  </div>
+                                </div>
+
+                                {(replies?.[activeLogThread ?? ''] || []).length === 0 ? (
+                                  <div className="bg-[#1c1c1c] rounded-[14px] p-6 border border-[#d4a843]/20 shadow-[0_0_20px_rgba(212,168,67,0.08)] w-full box-border timeline-card">
+                                     <span className="text-[#666666] font-mono text-sm italic">Awaiting secure response...</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-col gap-6 w-full box-border">
+                                    {(() => {
+                                      const threadReplies = (replies?.[activeLogThread ?? ''] || []).filter(Boolean);
+                                      const uniqueReplies = threadReplies.filter((r, i, s) => 
+                                        s.findIndex(t => (t.id && t.id === r.id) || (String(t.timestamp) === String(r.timestamp) && t.message === r.message)) === i
+                                      );
+                                      
+                                      return uniqueReplies.map((reply, ridx) => (
+                                        <div key={`reply-item-${reply?.id || `idx-${ridx}`}`} className="w-full box-border">
+                                          <ReplyItem 
+                                            reply={reply} 
+                                            getRelativeTime={getRelativeTime} 
+                                          />
+                                        </div>
+                                      ));
+                                    })()}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Footer card - Even wider and text fitting single line */}
+                              <div className="mt-12 -ml-[48px] w-[calc(100%+48px)] box-border relative">
+                                {/* The line touches the box top precisely at the thread alignment (16px from container left) */}
+                                <div 
+                                  className="absolute left-[16px] top-[-48px] h-[48px] w-[1px]" 
+                                  style={{ background: 'linear-gradient(to bottom, #d4a843, #d4a843)' }}
+                                />
+                                <div className="bg-[#1c1c1c] rounded-[14px] py-5 px-6 flex items-center justify-between gap-4 border border-[#d4a843]/40 shadow-[0_0_30px_rgba(212,168,67,0.1)] relative w-full box-border overflow-hidden">
+                                  <div className="flex items-center gap-4 min-w-0 flex-nowrap">
+                                    <div className="w-12 h-12 flex-none flex items-center justify-center text-[#d4a843] bg-[#d4a843]/10 rounded-lg shrink-0">
+                                      <ShieldCheck size={24} />
+                                    </div>
+                                    <div className="flex flex-col min-w-0">
+                                      <span className="text-white font-serif text-sm md:text-[18px] font-medium tracking-tight leading-tight">Your identity is secured.</span>
+                                      <span className="text-[10px] md:text-[11px] text-white/40 font-mono uppercase tracking-[0.2em] mt-1 max-w-[180px] leading-relaxed">Transmission Tunnel AES-256</span>
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Status Indicator */}
+                                  <div className="flex items-center gap-3 shrink-0 ml-auto">
+                                    <span className="text-[11px] text-[#d4a843] font-mono uppercase tracking-widest hidden sm:inline">Active</span>
+                                  </div>
+                                </div>
                               </div>
                             </div>
-                          );
-                        })
-                      )}
-                    </div>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
 
-              <div className="pt-4 border-t border-white/5 text-center">
+              <div className="pt-4 border-t border-white/5 text-center flex flex-col items-center gap-1 relative">
+                {!activeLogThread && (
+                  <div className="flex items-center gap-1.5 text-red-500/60 font-black uppercase tracking-[0.15em] text-[7px] mb-1">
+                    <Info size={10} className="stroke-[3]" />
+                    Swipe left to delete logs
+                  </div>
+                )}
                 <p className="text-[8px] uppercase tracking-[0.3em] font-bold text-white/20">Archived on local memory</p>
               </div>
+
+              <AnimatePresence>
+                {undoLog && (
+                  <motion.div 
+                    key="undo-toast-logs"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[300] w-[calc(100%-40px)] max-w-xs"
+                  >
+                    <div className="bg-[#b89e7a] text-black px-4 py-3 rounded-sm flex items-center justify-between gap-4 shadow-2xl">
+                      <span className="text-[9px] font-black uppercase tracking-widest whitespace-nowrap">Deleted</span>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleUndoDelete(); }}
+                        className="text-[9px] font-black uppercase tracking-widest bg-black text-white px-3 py-1.5 rounded-xs active:scale-95 transition-transform"
+                      >
+                        Undo {undoTimer}s
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Removed Delete Confirmation */}
             </motion.div>
           </motion.div>
         )}
@@ -964,7 +1794,7 @@ export default function MainApp() {
               <Mail size={80} className="text-white" style={{ animation: 'plane-pop 0.5s forwards', animationDelay: '2.8s', opacity: 0 }} />
               <div className="flex gap-1">
                 {"NOTE DELIVERED!".split("").map((char, i) => (
-                  <span key={i} className="text-white font-telegraph text-sm md:text-xl tracking-[0.2em] font-bold uppercase transition-opacity" style={{ animation: 'letter-fade-in 0.2s forwards', animationDelay: `${3.2 + (i * 0.05)}s`, opacity: 0 }}>{char === " " ? "\u00A0" : char}</span>
+                  <span key={`success-char-anim-${i}-${char}`} className="text-white font-telegraph text-sm md:text-xl tracking-[0.2em] font-bold uppercase transition-opacity" style={{ animation: 'letter-fade-in 0.2s forwards', animationDelay: `${3.2 + (i * 0.05)}s`, opacity: 0 }}>{char === " " ? "\u00A0" : char}</span>
                 ))}
               </div>
             </div>
@@ -976,6 +1806,7 @@ export default function MainApp() {
       <AnimatePresence>
         {showRulesOverlay && (
           <motion.div 
+            key="rules-protocol-overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
