@@ -9,7 +9,16 @@ class ErrorBoundary extends React.Component<
   state = { hasError: false, error: '' };
 
   static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error: error.message };
+    const msg = error?.message || String(error || '');
+    if (
+      msg === 'Script error.' || 
+      msg.toLowerCase().includes('script error') ||
+      msg.toLowerCase().includes('resizeobserver') ||
+      msg.toLowerCase().includes('resize observer')
+    ) {
+      return { hasError: false, error: '' };
+    }
+    return { hasError: true, error: msg };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {

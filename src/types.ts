@@ -92,4 +92,4 @@ export const THEMES: Theme[] = [
   }
 ];
 
-export const CHAR_LIMIT = 800;
+export const CHAR_LIMIT = 1000;

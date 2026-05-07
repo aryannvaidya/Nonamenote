@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import emailjs from '@emailjs/browser';
 import { 
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, 
   Send, Mail, CheckCircle2, AlertCircle, History, X, Check, Info,
@@ -257,44 +256,7 @@ export default function MainApp() {
     };
     checkUnsent();
 
-    const handleError = (errorEvent: ErrorEvent) => {
-      // Ignore routine ResizeObserver errors which can sometimes trigger Script error in some environments
-      const msg = errorEvent.message || '';
-      if (msg.includes('ResizeObserver') || msg === 'Script error.') {
-        return;
-      }
-      // Log more detail if possible to help diagnose Script error
-      console.error('Caught Global Error:', {
-        message: msg,
-        filename: errorEvent.filename,
-        lineno: errorEvent.lineno,
-        colno: errorEvent.colno,
-        error: errorEvent.error
-      });
-    };
-    window.addEventListener('error', handleError);
-    const handleRejection = (event: PromiseRejectionEvent) => {
-      const reason = event.reason;
-      const msg = reason?.message || String(reason || '');
-      
-      // Silence known noise
-      if (msg.includes('ResizeObserver') || msg.includes('Failed to fetch')) {
-        event.preventDefault();
-        return;
-      }
-
-      console.error('Unhandled Promise Rejection Detected:', {
-        reason: event.reason,
-        message: msg,
-        stack: event.reason?.stack,
-        isHTML: typeof event.reason === 'string' && event.reason.includes('<')
-      });
-      event.preventDefault();
-    };
-    window.addEventListener('unhandledrejection', handleRejection);
     return () => {
-      window.removeEventListener('error', handleError);
-      window.removeEventListener('unhandledrejection', handleRejection);
     };
   }, []);
 
@@ -952,7 +914,7 @@ export default function MainApp() {
     if (isToxic) {
       setStatus({ 
         type: 'error', 
-        message: "⚠️ Your message was flagged for harmful content and cannot be sent.\nNoNameNote does not allow abusive, threatening or inappropriate messages." 
+        message: "⚠️ Your message was flagged for harmful content and cannot be sent.\nNONAMENOTE does not allow abusive, threatening or inappropriate messages." 
       });
       setIsSending(false);
       return;
@@ -989,18 +951,22 @@ export default function MainApp() {
 
       console.log('Step 3: Sending email...');
       try {
-        await emailjs.send(
-          import.meta.env.VITE_EMAILJS_SERVICE_ID,
-          import.meta.env.VITE_EMAILJS_TEMPLATE_ID,
-          {
+        const emailResponse = await fetch('/api/send-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             to_email: recipient.trim(),
             note_link: noteLink
-          },
-          import.meta.env.VITE_EMAILJS_PUBLIC_KEY
-        );
+          })
+        });
+
+        if (!emailResponse.ok) {
+          const emailErrorData = await emailResponse.json().catch(() => ({}));
+          throw new Error(emailErrorData.message || emailErrorData.error || 'Failed to send email via server');
+        }
       } catch (emailError: any) {
-        console.error('EmailJS SDK Error:', emailError);
-        throw new Error(emailError?.text || 'Failed to send email via browser SDK');
+        console.error('Email Service Error:', emailError);
+        throw new Error(emailError?.message || 'Failed to dispatch email');
       }
 
       if (sendButtonRef.current) {
@@ -1093,10 +1059,16 @@ export default function MainApp() {
           className="w-full max-w-4xl px-4 md:px-8 flex flex-col md:flex-row justify-between items-center gap-4 box-border overflow-hidden"
         >
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 border-2 border-[#b89e7a] flex items-center justify-center text-[#b89e7a] text-2xl font-bold font-serif-elegant">N</div>
+            <div className="w-12 h-12 flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 100 100" className="w-full h-full">
+                <rect width="100" height="100" fill="none" />
+                <path d="M30 75 V25 L70 75 V25" fill="none" stroke="#b89e7a" strokeWidth="8" strokeLinecap="square" />
+                <path d="M20 25 H40 M60 25 H80 M20 75 H40 M60 75 H80" stroke="#b89e7a" strokeWidth="4" opacity="0.5" />
+              </svg>
+            </div>
             <div className="flex flex-col items-start leading-none">
               <h1 className="text-3xl font-serif-elegant tracking-[0.2em] text-[#b89e7a] uppercase font-light">
-                NoNameNote
+                NONAMENOTE
               </h1>
               <span className="text-[9px] text-[#b89e7a]/40 tracking-[0.15em] uppercase font-bold pl-0.5 mt-1 whitespace-nowrap">
                 What you feel, not who you are.
@@ -1165,6 +1137,11 @@ export default function MainApp() {
           <AnimatePresence>
             <motion.div id="note-card" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={`min-h-[500px] p-10 md:p-16 relative flex flex-col transition-all duration-1000 rounded-b-sm ${selectedTheme.paperClass} ${selectedTheme.fontClass}`}>
               <div ref={editorRef} contentEditable onKeyDown={(e) => { 
+                // Prevent typing if limit reached
+                if (charCount >= CHAR_LIMIT && e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+                  e.preventDefault();
+                  return;
+                }
                 if (e.key === 'Enter') {
                   const selection = window.getSelection();
                   if (selection && selection.rangeCount > 0) {
@@ -1861,7 +1838,7 @@ export default function MainApp() {
                     </div>
                   </div>
                   <span className="text-[10px] text-white/50 group-hover:text-white/80 transition-colors uppercase tracking-wider font-bold">
-                    I agree to use NoNameNote responsibly and follow the rules.
+                    I agree to use NONAMENOTE responsibly and follow the rules.
                   </span>
                 </label>
 

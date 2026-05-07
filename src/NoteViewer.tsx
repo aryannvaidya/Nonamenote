@@ -18,9 +18,15 @@ export default function NoteViewer() {
   useEffect(() => {
     if (id) {
       fetchNote(id);
-      const replied = JSON.parse(localStorage.getItem('repliedNotes') || '[]');
-      if (replied.includes(id)) {
-        setHasReplied(true);
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          const replied = JSON.parse(localStorage.getItem('repliedNotes') || '[]');
+          if (Array.isArray(replied) && replied.includes(id)) {
+            setHasReplied(true);
+          }
+        }
+      } catch (e) {
+        console.warn("Storage access failed:", e);
       }
     }
   }, [id]);
@@ -80,9 +86,18 @@ export default function NoteViewer() {
       
       if (!response.ok) throw new Error('Failed to send reply');
       
-      const replied = JSON.parse(localStorage.getItem('repliedNotes') || '[]');
-      replied.push(id);
-      localStorage.setItem('repliedNotes', JSON.stringify(replied));
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          const replied = JSON.parse(localStorage.getItem('repliedNotes') || '[]');
+          if (Array.isArray(replied)) {
+            replied.push(id);
+            localStorage.setItem('repliedNotes', JSON.stringify(replied));
+          }
+        }
+      } catch (e) {
+        console.warn("Storage write failed:", e);
+      }
+      
       setHasReplied(true);
       setReplyText('');
       setShowReplyPanel(false);
@@ -172,9 +187,13 @@ export default function NoteViewer() {
                 <div className="absolute inset-0 bg-white/[0.02]" style={{ clipPath: 'polygon(0 0, 0 100%, 50% 50%)' }} />
                 <div className="absolute inset-0 bg-white/[0.02]" style={{ clipPath: 'polygon(100% 0, 100% 100%, 50% 50%)' }} />
                 
-                {/* Wax Seal */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 bg-[#d4a843] rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(0,0,0,0.5)] z-10 transition-transform group-hover:scale-110">
-                  <span className="text-[#1c1c1c] font-serif text-3xl font-medium">N</span>
+                {/* Central Logo */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 flex items-center justify-center z-10 transition-transform group-hover:scale-110 pointer-events-none">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 100 100" className="w-full h-full">
+                    <rect width="100" height="100" fill="none" />
+                    <path d="M30 75 V25 L70 75 V25" fill="none" stroke="#d4a843" strokeWidth="8" strokeLinecap="square" />
+                    <path d="M20 25 H40 M60 25 H80 M20 75 H40 M60 75 H80" stroke="#d4a843" strokeWidth="4" opacity="0.5" />
+                  </svg>
                 </div>
               </div>
             </div>
@@ -193,7 +212,7 @@ export default function NoteViewer() {
             <div className="absolute bottom-10 left-0 right-0 flex flex-col items-center gap-4">
               <div className="flex items-center gap-3">
                 <div className="h-[1px] w-12 bg-white/10" />
-                <div className="text-white/30 font-mono text-[9px] tracking-[0.3em] uppercase">Nonamenote Archive</div>
+                <div className="text-white/30 font-mono text-[9px] tracking-[0.3em] uppercase">NONAMENOTE ARCHIVE</div>
                 <div className="h-[1px] w-12 bg-white/10" />
               </div>
               <p className="text-white/10 text-[8px] uppercase tracking-[0.2em] max-w-[240px] text-center leading-relaxed">
@@ -202,7 +221,7 @@ export default function NoteViewer() {
             </div>
           </motion.div>
         ) : (
-          <div key="revealed-view" className="w-full flex flex-col items-center px-4 py-8 md:py-12 box-border min-h-screen overflow-hidden">
+          <div key="revealed-view" className="w-full flex flex-col items-center px-4 py-8 md:py-12 box-border min-h-screen">
               {/* Header outside the paper */}
             <div className="w-full max-w-4xl flex justify-end mb-2 pr-2">
                <span className="font-mono text-[10px] md:text-sm tracking-[0.2em] uppercase text-white/40">
@@ -252,21 +271,22 @@ export default function NoteViewer() {
                 </p>
               </div>
 
-              {/* Unified Footer Actions - Stacked closely as requested */}
+            {/* Unified Footer Actions - Stacked closely as requested */}
               <div className="pb-16 pt-8 border-t border-white/10 flex flex-col items-center gap-6">
                 <button 
-                  onClick={() => setShowReplyPanel(true)}
-                  className="group flex items-center gap-3 text-sm font-medium tracking-[0.3em] uppercase border-b-2 border-[#d4a843] pb-1 hover:opacity-80 transition-all font-mono text-[#d4a843]"
-                  style={{ borderColor: '#d4a843' }}
+                  onClick={() => !hasReplied && setShowReplyPanel(true)}
+                  disabled={hasReplied}
+                  className={`group flex items-center gap-3 text-sm font-medium tracking-[0.3em] uppercase border-b-2 pb-1 transition-all font-mono ${hasReplied ? 'text-white/20 border-white/10 cursor-not-allowed' : 'text-[#d4a843] border-[#d4a843] hover:opacity-80'}`}
                 >
-                  Respond anonymously <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                  {hasReplied ? 'Reply Sent' : 'Respond anonymously'} 
+                  {!hasReplied && <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />}
                 </button>
 
                 <button 
                     onClick={() => navigate('/')}
                     className="text-[12px] font-bold tracking-[0.4em] uppercase font-mono text-white hover:text-black hover:bg-white border border-white/20 px-8 py-4 rounded-full transition-all"
                 >
-                    SEND YOUR OWN NOTES ANONYMOUS
+                    SEND YOUR OWN NOTES ANONYMOUSLY
                 </button>
               </div>
             </motion.div>

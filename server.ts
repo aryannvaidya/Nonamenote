@@ -10,6 +10,7 @@ import getNoteHandler from "./api/get-note.js";
 import saveReplyHandler from "./api/save-reply.js";
 import getRepliesHandler from "./api/get-replies.js";
 import markReplyReadHandler from "./api/mark-reply-read.js";
+import sendEmailHandler from "./api/send-email.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,6 +29,7 @@ async function startServer() {
   app.post("/api/save-reply", saveReplyHandler);
   app.post("/api/get-replies", getRepliesHandler);
   app.post("/api/mark-reply-read", markReplyReadHandler);
+  app.post("/api/send-email", sendEmailHandler);
 
   // Health check
   app.get("/api/health", (req, res) => {
@@ -35,7 +37,8 @@ async function startServer() {
       status: "ok",
       config: {
         firebase: !!(process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY),
-        emailjs: !!(process.env.EMAILJS_SERVICE_ID && process.env.EMAILJS_TEMPLATE_ID && process.env.EMAILJS_PUBLIC_KEY),
+        emailjs: !!(process.env.EMAILJS_SERVICE_ID && process.env.EMAILJS_TEMPLATE_ID && process.env.EMAILJS_PUBLIC_KEY && process.env.EMAILJS_PRIVATE_KEY),
+        brevo: !!process.env.BREVO_API_KEY,
         huggingface: !!process.env.HUGGINGFACE_TOKEN
       }
     });
