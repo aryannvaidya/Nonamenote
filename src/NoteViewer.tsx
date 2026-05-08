@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { ShieldCheck, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Logo } from './components/Logo';
 
 export default function NoteViewer() {
   const { id } = useParams<{ id: string }>();
@@ -110,9 +111,25 @@ export default function NoteViewer() {
 
   if (isNoteLoading) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
-        <div className="text-[#d4a843] font-mono tracking-widest text-sm animate-pulse uppercase">
-          Initializing Connection...
+      <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center p-6 bg-[radial-gradient(circle_at_center,rgba(184,158,122,0.03)_0%,transparent_70%)]">
+        <div className="relative w-16 h-16 mb-8 group">
+          <div className="absolute inset-0 border border-[#b89e7a]/20 rounded-full animate-[spin_4s_linear_infinite]" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Logo className="w-8 h-8 opacity-40 group-hover:opacity-60 transition-opacity" />
+          </div>
+        </div>
+        <div className="flex flex-col items-center gap-3">
+          <div className="text-[#b89e7a] font-mono tracking-[0.4em] text-[10px] uppercase opacity-60">
+            Establishing Secure Link
+          </div>
+          <div className="w-24 h-[1px] bg-[#b89e7a]/10 overflow-hidden relative">
+            <motion.div 
+              initial={{ left: '-100%' }}
+              animate={{ left: '100%' }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+              className="absolute top-0 bottom-0 w-1/2 bg-[#b89e7a]/40"
+            />
+          </div>
         </div>
       </div>
     );
@@ -188,12 +205,8 @@ export default function NoteViewer() {
                 <div className="absolute inset-0 bg-white/[0.02]" style={{ clipPath: 'polygon(100% 0, 100% 100%, 50% 50%)' }} />
                 
                 {/* Central Logo */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 flex items-center justify-center z-10 transition-transform group-hover:scale-110 pointer-events-none">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 100 100" className="w-full h-full">
-                    <rect width="100" height="100" fill="none" />
-                    <path d="M30 75 V25 L70 75 V25" fill="none" stroke="#d4a843" strokeWidth="8" strokeLinecap="square" />
-                    <path d="M20 25 H40 M60 25 H80 M20 75 H40 M60 75 H80" stroke="#d4a843" strokeWidth="4" opacity="0.5" />
-                  </svg>
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 flex items-center justify-center z-10 transition-transform group-hover:scale-110 pointer-events-none overflow-hidden">
+                  <Logo />
                 </div>
               </div>
             </div>
@@ -278,7 +291,7 @@ export default function NoteViewer() {
                   disabled={hasReplied}
                   className={`group flex items-center gap-3 text-sm font-medium tracking-[0.3em] uppercase border-b-2 pb-1 transition-all font-mono ${hasReplied ? 'text-white/20 border-white/10 cursor-not-allowed' : 'text-[#d4a843] border-[#d4a843] hover:opacity-80'}`}
                 >
-                  {hasReplied ? 'Reply Sent' : 'Respond anonymously'} 
+                  {hasReplied ? 'REPLY SENT' : 'REPLY ANONYMOUSLY'} 
                   {!hasReplied && <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />}
                 </button>
 

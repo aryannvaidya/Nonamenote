@@ -88,6 +88,8 @@ const ReplyItem = ({ reply, getRelativeTime }: { reply: any, getRelativeTime: an
   );
 };
 
+import { Logo } from './components/Logo';
+
 export default function MainApp() {
   const [content, setContent] = useState('');
   const [recipient, setRecipient] = useState('');
@@ -947,7 +949,7 @@ export default function MainApp() {
       const { noteId } = saveData;
 
       setStatus({ type: null, message: 'Routing: Dispatching secure link...' });
-      const noteLink = window.location.origin + "/view/" + noteId;
+      const noteLink = window.location.origin + '/view/' + noteId;
 
       console.log('Step 3: Sending email...');
       try {
@@ -1059,12 +1061,8 @@ export default function MainApp() {
           className="w-full max-w-4xl px-4 md:px-8 flex flex-col md:flex-row justify-between items-center gap-4 box-border overflow-hidden"
         >
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 flex items-center justify-center">
-              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 100 100" className="w-full h-full">
-                <rect width="100" height="100" fill="none" />
-                <path d="M30 75 V25 L70 75 V25" fill="none" stroke="#b89e7a" strokeWidth="8" strokeLinecap="square" />
-                <path d="M20 25 H40 M60 25 H80 M20 75 H40 M60 75 H80" stroke="#b89e7a" strokeWidth="4" opacity="0.5" />
-              </svg>
+            <div className="w-12 h-12 flex items-center justify-center overflow-hidden">
+              <Logo />
             </div>
             <div className="flex flex-col items-start leading-none">
               <h1 className="text-3xl font-serif-elegant tracking-[0.2em] text-[#b89e7a] uppercase font-light">
