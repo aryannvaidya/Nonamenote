@@ -7,7 +7,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<MainApp />} />
-      <Route path="/view/:id" element={<NoteViewer />} />
+      <Route path="/note-viewer/:id" element={<NoteViewer />} />
     </Routes>
   );
 }

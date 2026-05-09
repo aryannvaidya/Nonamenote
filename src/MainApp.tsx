@@ -949,7 +949,7 @@ export default function MainApp() {
       const { noteId } = saveData;
 
       setStatus({ type: null, message: 'Routing: Dispatching secure link...' });
-      const noteLink = window.location.origin + '/view/' + noteId;
+      const noteLink = window.location.origin + '/note-viewer/' + noteId;
 
       console.log('Step 3: Sending email...');
       try {
