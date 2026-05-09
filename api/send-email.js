@@ -95,7 +95,10 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         sender: {
           name: 'NoNameNote',
-          email: process.env.SENDER_EMAIL
+          email: 'dispatch@nonamenote.fun'
+        },
+        replyTo: {
+          email: 'noreply@nonamenote.fun'
         },
         to: [{ email: to_email }],
         subject: '🕊️ Someone sent you a secret note',
