@@ -3,6 +3,8 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { ShieldCheck, ArrowLeft, ArrowRight } from 'lucide-react';
 import { Logo } from './components/Logo';
+import { getNote, fetchWithRetry } from './lib/api';
+import { NoteViewerSkeleton } from './components/NoteViewerSkeleton';
 
 export default function NoteViewer() {
   const { id } = useParams<{ id: string }>();
@@ -18,7 +20,24 @@ export default function NoteViewer() {
 
   useEffect(() => {
     if (id) {
-      fetchNote(id);
+      const loadNote = async () => {
+        setIsNoteLoading(true);
+        try {
+          const note = await getNote(id);
+          if (note) {
+            setViewingData(note);
+          } else {
+            setStatus({ type: 'error', message: "This note has expired or doesn't exist" });
+          }
+        } catch (err: any) {
+          setStatus({ type: 'error', message: "Error fetching note after multiple attempts" });
+        } finally {
+          setIsNoteLoading(false);
+        }
+      };
+      
+      loadNote();
+
       try {
         if (typeof window !== 'undefined' && window.localStorage) {
           const replied = JSON.parse(localStorage.getItem('repliedNotes') || '[]');
@@ -32,34 +51,13 @@ export default function NoteViewer() {
     }
   }, [id]);
 
-  const fetchNote = async (noteId: string) => {
-    setIsNoteLoading(true);
-    try {
-      const response = await fetch('/api/get-note', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ noteId, markSeen: false })
-      });
-      if (!response.ok) {
-        setStatus({ type: 'error', message: "This note has expired or doesn't exist" });
-      } else {
-        const { note } = await response.json();
-        setViewingData(note);
-      }
-    } catch (err: any) {
-      setStatus({ type: 'error', message: "Error fetching note" });
-    } finally {
-      setIsNoteLoading(false);
-    }
-  };
-
   const startAnimation = async () => {
     if (!viewingData || !id || animationStage !== 'idle') return;
     
     setAnimationStage('animating');
     
     // Mark as seen in background
-    fetch('/api/get-note', {
+    fetchWithRetry('/api/get-note', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ noteId: id, markSeen: true })
@@ -76,7 +74,7 @@ export default function NoteViewer() {
       if (!replyText?.trim() || isSendingReply || hasReplied || !id) return;
       
       setIsSendingReply(true);
-      const response = await fetch('/api/save-reply', {
+      const response = await fetchWithRetry('/api/save-reply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -110,29 +108,7 @@ export default function NoteViewer() {
   };
 
   if (isNoteLoading) {
-    return (
-      <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center p-6 bg-[radial-gradient(circle_at_center,rgba(184,158,122,0.03)_0%,transparent_70%)]">
-        <div className="relative w-16 h-16 mb-8 group">
-          <div className="absolute inset-0 border border-[#b89e7a]/20 rounded-full animate-[spin_4s_linear_infinite]" />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Logo className="w-8 h-8 opacity-40 group-hover:opacity-60 transition-opacity" />
-          </div>
-        </div>
-        <div className="flex flex-col items-center gap-3">
-          <div className="text-[#b89e7a] font-mono tracking-[0.4em] text-[10px] uppercase opacity-60">
-            Establishing Secure Link
-          </div>
-          <div className="w-24 h-[1px] bg-[#b89e7a]/10 overflow-hidden relative">
-            <motion.div 
-              initial={{ left: '-100%' }}
-              animate={{ left: '100%' }}
-              transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-              className="absolute top-0 bottom-0 w-1/2 bg-[#b89e7a]/40"
-            />
-          </div>
-        </div>
-      </div>
-    );
+    return <NoteViewerSkeleton />;
   }
 
   if (status.type === 'error') {
@@ -195,7 +171,7 @@ export default function NoteViewer() {
             </div>
 
             {/* Envelope Illustration */}
-            <div className="relative w-full max-w-[340px] aspect-[4/3] group cursor-pointer">
+            <div className="relative w-full max-w-[min(340px,90%)] aspect-[4/3] group cursor-pointer envelope">
               {/* Envelope Body */}
               <div className="absolute inset-0 bg-[#1c1c1c] rounded-2xl border border-white/5 shadow-2xl overflow-hidden transition-transform duration-500 group-hover:scale-[1.02]">
                 <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 50% 50%, #d4a843 0%, transparent 100%)', filter: 'blur(40px)' }} />
@@ -247,7 +223,7 @@ export default function NoteViewer() {
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8 }}
-              className="relative w-full max-w-4xl flex flex-col box-border min-h-[400px]"
+              className="relative w-full max-w-4xl flex flex-col box-border min-h-[400px] note-card"
             >
               {/* Stamp (if present in the data) */}
               <div 
@@ -368,7 +344,7 @@ export default function NoteViewer() {
 
       <style dangerouslySetInnerHTML={{ __html: `
         .note-content-rendered {
-          font-size: 1.5rem;
+          font-size: clamp(1rem, 2.5vw, 1.5rem);
           line-height: 1.7; /* Slightly more breathable for parchment */
         }
         @media (max-width: 768px) {

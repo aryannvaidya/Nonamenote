@@ -64,6 +64,7 @@ async function scanWithAI(text: string) {
   }
 }
 import confetti from 'canvas-confetti';
+import { fetchWithRetry } from './lib/api';
 import { Theme, THEMES, CHAR_LIMIT } from './types';
 
 // Reply Item Component
@@ -928,7 +929,7 @@ export default function MainApp() {
       const noteHTML = noteCard?.outerHTML || "";
       
       console.log('Step 2: Saving to Firebase...');
-      const saveResponse = await fetch('/api/save-note', {
+      const saveResponse = await fetchWithRetry('/api/save-note', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -953,7 +954,7 @@ export default function MainApp() {
 
       console.log('Step 3: Sending email...');
       try {
-        const emailResponse = await fetch('/api/send-email', {
+        const emailResponse = await fetchWithRetry('/api/send-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1479,7 +1480,7 @@ export default function MainApp() {
                                       });
         
                                       // Background fetch for freshest status and replies
-                                      fetch('/api/get-note', {
+                                      fetchWithRetry('/api/get-note', {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify({ noteId: log.noteId, markSeen: false })
