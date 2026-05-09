@@ -207,7 +207,7 @@ export default function MainApp() {
     const initApp = async () => {
       try {
         setLoading(true);
-        const rulesAccepted = localStorage.getItem('rulesAccepted');
+        const rulesAccepted = sessionStorage.getItem('rulesAccepted');
         if (!rulesAccepted) {
           setShowRulesOverlay(true);
         }
@@ -264,7 +264,7 @@ export default function MainApp() {
   }, []);
 
   const handleAcceptRules = () => {
-    localStorage.setItem('rulesAccepted', 'true');
+    sessionStorage.setItem('rulesAccepted', 'true');
     setShowRulesOverlay(false);
   };
 
