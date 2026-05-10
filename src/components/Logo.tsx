@@ -37,9 +37,17 @@ export const Logo: React.FC<LogoProps> = ({ className = "w-full h-full" }) => {
 
   return (
     <img 
-      src="/logo.webp" 
-      alt="NoNameNote Logo" 
+      src="https://i.imgur.com/XHuu82K.png" 
+      alt="NoNameNote" 
       className={`object-contain ${className}`}
+      style={{
+        height: '60px',
+        width: 'auto',
+        objectFit: 'contain'
+      }}
+      loading="eager"
+      // @ts-ignore - fetchPriority is supported in browsers but may not be in all TS types yet
+      fetchPriority="high"
       onError={() => {
         console.warn('Logo image failed to load, falling back to SVG');
         setError(true);
