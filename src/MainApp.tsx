@@ -92,7 +92,7 @@ const ReplyItem = ({ reply, getRelativeTime }: { reply: any, getRelativeTime: an
 import { Logo } from './components/Logo';
 
 export default function MainApp() {
-  const [content, setContent] = useState('');
+  const [content, setContent] = useState('<h2><br></h2>');
   const [recipient, setRecipient] = useState('');
   const [selectedTheme, setSelectedTheme] = useState<Theme>(THEMES[0]);
   const [activeTextColor, setActiveTextColor] = useState<string | null>(null);
@@ -106,9 +106,22 @@ export default function MainApp() {
   const [showRulesOverlay, setShowRulesOverlay] = useState(false);
   const [agreedToRules, setAgreedToRules] = useState(false);
   const [understoodResponsibility, setUnderstoodResponsibility] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [logs, setLogs] = useState<{ id: string; noteId?: string; recipient: string; content: string; timestamp: number; hasUnread?: boolean; replyCount?: number; opened?: boolean; openedAt?: number; isDraft?: boolean; themeId?: string; htmlContent?: string; }[]>([]);
+  const [logs, setLogs] = useState<{ id: string; noteId?: string; recipient: string; content: string; timestamp: number; hasUnread?: boolean; replyCount?: number; opened?: boolean; openedAt?: number; isDraft?: boolean; themeId?: string; htmlContent?: string; }[]>(() => {
+    try {
+      const savedLogs = typeof window !== "undefined" ? localStorage.getItem("sentNotesLog") : null;
+      if (savedLogs) {
+        const parsed = JSON.parse(savedLogs);
+        return Array.isArray(parsed) ? parsed.filter((log, index, self) => 
+          log && index === self.findIndex((t) => t && ((t.id && t.id === log.id) || (t.noteId && t.noteId === log.noteId)))
+        ) : [];
+      }
+    } catch (e) {
+      console.error("Failed to parse initial logs", e);
+    }
+    return [];
+  });
   const [activeLogThread, setActiveLogThread] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'DRAFT' | 'UNREAD' | 'SEEN' | 'DELIVERED'>('ALL');
   const [undoLog, setUndoLog] = useState<{ log: any; index: number } | null>(null);
@@ -154,17 +167,24 @@ export default function MainApp() {
   }, [showLogs]);
 
   const handleDeleteLog = (id: string) => {
-    const logIndex = logs.findIndex(l => (l.id === id || l.noteId === id));
-    if (logIndex === -1) return;
+    lastDeleteTimeRef.current = Date.now();
+    // Delay state change slightly to let event loop handle trailing drag/release events cleanly,
+    // avoiding fall-through clicks to the background backdrop layout.
+    setTimeout(() => {
+      lastDeleteTimeRef.current = Date.now();
+      setLogs(prevLogs => {
+        const logIndex = prevLogs.findIndex(l => (l.id === id || l.noteId === id));
+        if (logIndex === -1) return prevLogs;
 
-    const logToDelete = logs[logIndex];
-    const newLogs = logs.filter(l => (l.id !== id && l.noteId !== id));
-    
-    setLogs(newLogs);
-    localStorage.setItem('sentNotesLog', JSON.stringify(newLogs));
-    
-    setUndoLog({ log: logToDelete, index: logIndex });
-    setUndoTimer(5);
+        const logToDelete = prevLogs[logIndex];
+        const newLogs = prevLogs.filter(l => (l.id !== id && l.noteId !== id));
+        
+        localStorage.setItem('sentNotesLog', JSON.stringify(newLogs));
+        setUndoLog({ log: logToDelete, index: logIndex });
+        setUndoTimer(5);
+        return newLogs;
+      });
+    }, 100);
   };
 
   useEffect(() => {
@@ -199,6 +219,8 @@ export default function MainApp() {
   const editorRef = useRef<HTMLDivElement>(null);
   const themeScrollRef = useRef<HTMLDivElement>(null);
   const sendButtonRef = useRef<HTMLButtonElement>(null);
+  const lastDeleteTimeRef = useRef<number>(0);
+  const dragTimestampRef = useRef<number>(0);
 
   useEffect(() => {
     // Force browser to use divs for new lines, ensuring proper block separation for alignment
@@ -206,7 +228,6 @@ export default function MainApp() {
 
     const initApp = async () => {
       try {
-        setLoading(true);
         const rulesAccepted = sessionStorage.getItem('rulesAccepted');
         if (!rulesAccepted) {
           setShowRulesOverlay(true);
@@ -219,7 +240,10 @@ export default function MainApp() {
               log && index === self.findIndex((t) => t && ((t.id && t.id === log.id) || (t.noteId && t.noteId === log.noteId)))
             ) : [];
             setLogs(uniqueLogs);
-            checkAllReplies(uniqueLogs).catch(err => console.error("Archive status check failed:", err));
+            // Delay background checking slightly to prevent startup lag and UI blocks
+            setTimeout(() => {
+              checkAllReplies(uniqueLogs).catch(err => console.error("Archive status check failed:", err));
+            }, 1000);
           } catch (e) {
             console.error("Failed to parse logs", e);
           }
@@ -227,8 +251,6 @@ export default function MainApp() {
       } catch (err) {
         console.error("Initialization error:", err);
         setError("Failed to initialize application");
-      } finally {
-        setLoading(false);
       }
     };
     
@@ -236,13 +258,14 @@ export default function MainApp() {
 
     // Check for auto-saved unsent transmission
     const checkUnsent = () => {
+      let restored = false;
       const unsent = localStorage.getItem('unsent_transmission');
       if (unsent) {
         try {
           const parsed = JSON.parse(unsent);
           // If editor is empty, ask to restore or just restore if it's recent (e.g. within 1 hour)
           // For simplicity and user experience, we'll just restore if the current editor is truly empty
-          const isEditorEmpty = !content.trim() || content === '<br>';
+          const isEditorEmpty = !content.trim() || content === '<br>' || content === '<h2><br></h2>' || content === '<h2></h2>';
           if (isEditorEmpty && (Date.now() - parsed.timestamp < 3600000)) {
             setRecipient(parsed.recipient || '');
             const theme = THEMES.find(t => t.id === parsed.themeId) || THEMES[0];
@@ -250,11 +273,17 @@ export default function MainApp() {
             if (editorRef.current) {
               editorRef.current.innerHTML = parsed.content || '';
               setContent(parsed.content || '');
+              restored = true;
             }
           }
         } catch (e) {
           console.error("Failed to parse unsent transmission", e);
         }
+      }
+
+      if (!restored && editorRef.current) {
+        editorRef.current.innerHTML = '<h2><br></h2>';
+        setContent('<h2><br></h2>');
       }
     };
     checkUnsent();
@@ -270,13 +299,13 @@ export default function MainApp() {
 
   const handleDeleteTransmission = () => {
     if (!activeLogThread) return;
+    lastDeleteTimeRef.current = Date.now();
     const updated = logs.filter(l => l.noteId !== activeLogThread);
     setLogs(updated);
     localStorage.setItem('sentNotesLog', JSON.stringify(updated));
     setActiveLogThread(null);
     setActiveNoteData(null);
     setShowDeleteConfirm(false);
-    setShowLogs(false);
   };
 
   useEffect(() => {
@@ -618,12 +647,12 @@ export default function MainApp() {
         
         // Only reset innerHTML if it's truly devoid of any structural formatting
         const inner = editorRef.current.innerHTML.toLowerCase();
-        // If we have a blockquote or h2, it's not trivial to reset
-        const hasStructuralElements = inner.includes('<blockquote') || inner.includes('<h2');
-        const isTrivial = (inner === '' || inner === '<br>' || inner === '<div><br></div>' || inner === '<p><br></p>' || inner === '<div></div>') && !hasStructuralElements;
+        // If we have a blockquote, it's not trivial to reset, but h2 is our target default
+        const hasStructuralElements = inner.includes('<blockquote');
+        const isTrivial = (inner === '' || inner === '<br>' || inner === '<div><br></div>' || inner === '<p><br></p>' || inner === '<div></div>' || inner === '<h2><br></h2>' || inner === '<h2></h2>') && !hasStructuralElements;
         
         if (isTrivial && !hasFormatting) {
-          editorRef.current.innerHTML = '<div><br></div>';
+          editorRef.current.innerHTML = '<h2><br></h2>';
           if (selection) {
             const range = document.createRange();
             if (editorRef.current.firstChild) {
@@ -674,7 +703,7 @@ export default function MainApp() {
 
     setLoadedDraftContent(content);
     setStatus({ type: 'success', message: 'Transmission draft saved locally.' });
-    setTimeout(() => setStatus({ type: null, message: '' }), 3000);
+    setTimeout(() => setStatus({ type: null, message: '' }), 10000);
   };
 
   const loadDraft = (log: any) => {
@@ -702,7 +731,7 @@ export default function MainApp() {
     setShowLogs(false);
     setActiveLogThread(null);
     setStatus({ type: 'success', message: 'Draft loaded into editor.' });
-    setTimeout(() => setStatus({ type: null, message: '' }), 3000);
+    setTimeout(() => setStatus({ type: null, message: '' }), 10000);
   };
 
   const execCommand = (command: string, value?: string) => {
@@ -726,6 +755,60 @@ export default function MainApp() {
         document.execCommand('foreColor', false, value);
         forcedColor = value || null;
         setActiveTextColor(value || null);
+      }
+    } else if (command === 'underline') {
+      const selection = window.getSelection();
+      let handled = false;
+      if (selection && selection.rangeCount > 0 && selection.isCollapsed) {
+        const isUnderlineActive = document.queryCommandState('underline');
+        if (isUnderlineActive) {
+          let anchor = selection.anchorNode;
+          let underlineNode: HTMLElement | null = null;
+          while (anchor && anchor !== editorRef.current) {
+            if (anchor instanceof HTMLElement) {
+              const name = anchor.nodeName.toUpperCase();
+              const hasUnderlineStyle = anchor.style && (
+                anchor.style.textDecoration?.includes('underline') || 
+                anchor.style.textDecorationLine?.includes('underline')
+              );
+              if (name === 'U' || hasUnderlineStyle) {
+                underlineNode = anchor;
+                break;
+              }
+            }
+            anchor = anchor.parentNode;
+          }
+
+          if (underlineNode) {
+            const range = selection.getRangeAt(0);
+            const zwsp = document.createTextNode('\u200B');
+            
+            const rangeAfter = document.createRange();
+            rangeAfter.setStart(range.startContainer, range.startOffset);
+            rangeAfter.setEndAfter(underlineNode);
+            
+            const fragment = rangeAfter.extractContents();
+            
+            const parent = underlineNode.parentNode;
+            if (parent) {
+              const nextSibling = underlineNode.nextSibling;
+              parent.insertBefore(zwsp, nextSibling);
+              if (fragment.childNodes.length > 0) {
+                parent.insertBefore(fragment, zwsp.nextSibling);
+              }
+              
+              const newRange = document.createRange();
+              newRange.setStart(zwsp, 1);
+              newRange.collapse(true);
+              selection.removeAllRanges();
+              selection.addRange(newRange);
+            }
+            handled = true;
+          }
+        }
+      }
+      if (!handled) {
+        document.execCommand(command, false, value);
       }
     } else {
       document.execCommand(command, false, value);
@@ -869,7 +952,24 @@ export default function MainApp() {
     }
   }, [status.message, status.type]);
 
+  useEffect(() => {
+    if (status.type) {
+      if (status.type === 'error' && status.message?.includes('Next note available in:')) {
+        return;
+      }
+      const timer = setTimeout(() => {
+        setStatus({ type: null, message: '' });
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [status.type, status.message]);
+
   const handleSend = async (type: 'direct' | 'link') => {
+    if (!agreedToRules || !understoodResponsibility) {
+      setStatus({ type: 'error', message: 'Please review and check the responsibility protocol checkboxes before dispatching.' });
+      return;
+    }
+
     if (!canSendNote()) {
       const remaining = getTimeRemaining();
       setStatus({ 
@@ -999,8 +1099,8 @@ export default function MainApp() {
       localStorage.removeItem('unsent_transmission');
       saveToLogs(recipient, content, noteId); // Updated with backend ID
       setNextAvailableTime(getTimeRemaining()); // Provide immediate UI lock
-      if (editorRef.current) editorRef.current.innerHTML = '';
-      setContent('');
+      if (editorRef.current) editorRef.current.innerHTML = '<h2><br></h2>';
+      setContent('<h2><br></h2>');
       setRecipient('');
     } catch (error: any) {
       console.error('Action Error:', error);
@@ -1066,11 +1166,11 @@ export default function MainApp() {
               <Logo />
             </div>
             <div className="flex flex-col items-start leading-none">
-              <h1 className="text-3xl font-serif-elegant tracking-[0.2em] text-[#b89e7a] uppercase font-light">
+              <h1 className="text-3xl font-serif-elegant tracking-[0.2em] mr-[-0.2em] text-[#b89e7a] uppercase font-light">
                 NONAMENOTE
               </h1>
-              <span className="text-[9px] text-[#b89e7a]/40 tracking-[0.15em] uppercase font-bold pl-0.5 mt-1 whitespace-nowrap">
-                What you feel, not who you are.
+              <span className="text-[9px] md:text-[9.5px] text-[#b89e7a]/40 tracking-[0.54em] mr-[-0.54em] uppercase font-bold pl-0.5 mt-2 whitespace-nowrap">
+                Anonymous And Secure
               </span>
             </div>
           </div>
@@ -1083,14 +1183,14 @@ export default function MainApp() {
             DATE: {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase()}
           </div>
           <button 
-            onClick={() => {
-              try {
-                setShowLogs(true);
-              } catch (error) {
-                console.error('Click handler error:', error);
-              }
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setShowLogs(true);
             }}
-            className="group flex items-center gap-2 text-[10px] font-black text-[#b89e7a] uppercase tracking-[0.4em] hover:text-white transition-colors border-b border-[#b89e7a]/20 pb-1 relative"
+            onClick={() => {
+              setShowLogs(true);
+            }}
+            className="group flex items-center gap-2 text-[10px] font-black text-[#b89e7a] uppercase tracking-[0.4em] hover:text-white transition-colors border-b border-[#b89e7a]/20 pb-1 relative cursor-pointer"
           >
             <div className="relative">
               <History size={12} className="opacity-40 group-hover:opacity-100 transition-opacity" />
@@ -1125,8 +1225,8 @@ export default function MainApp() {
                   </div>
                 <div className="h-4 w-[1px] bg-[#333] shrink-0"></div>
                 <div className="flex gap-2.5 p-1 bg-black/40 rounded-sm border border-white/5 overflow-x-auto scrollbar-hide flex-1 justify-between px-2">
-                  {['#ffffff', '#000000', '#b89e7a', '#ff4d4d', '#4dff4d', '#4d4dff', '#ffff4d'].map((color, idx) => (
-                    <button key={`palette-${color}-${idx}`} onMouseDown={(e) => { e.preventDefault(); execCommand('foreColor', color); }} className={`w-4 h-4 rounded-sm hover:scale-110 active:scale-95 transition-all shadow-[0_0_5px_rgba(0,0,0,0.5)] border shrink-0 ${activeTextColor === color ? 'border-white scale-110 ring-1 ring-[#b89e7a]' : 'border-white/10'}`} style={{ backgroundColor: color }} />
+                  {['#ffffff', '#000000', '#ff4da6', '#ff4d4d', '#4dff4d', '#4d4dff', '#ffff4d'].map((color, idx) => (
+                    <button key={`palette-${color}-${idx}`} onMouseDown={(e) => { e.preventDefault(); execCommand('foreColor', color); }} className={`w-4 h-4 rounded-sm hover:scale-110 active:scale-95 transition-all shadow-[0_0_5px_rgba(0,0,0,0.5)] border shrink-0 ${activeTextColor === color ? 'border-white scale-110 ring-1 ring-[#ff4da6]' : 'border-white/10'}`} style={{ backgroundColor: color }} />
                   ))}
                 </div>
               </div>
@@ -1238,30 +1338,28 @@ export default function MainApp() {
                       temp = temp.parentNode;
                     }
 
-                    if (quoteNode) {
-                      // Check if cursor is at the very beginning of the blockquote
+                    if (quoteNode && range.collapsed) {
+                      // Check if cursor is at the very beginning of the blockquote or the quote is empty
                       const rangeToStart = document.createRange();
-                      rangeToStart.setStart(quoteNode, 0);
-                      rangeToStart.setEnd(range.startContainer, range.startOffset);
-                      
-                      const contentAtStart = rangeToStart.toString().replace(/\u200B/g, '');
-                      const totalContent = quoteNode.innerText.replace(/\u200B/g, '').trim();
-
-                      // Only "untoggle" if the selection is collapsed AND at the beginning or the quote is empty
-                      if (range.collapsed && (contentAtStart === '' || totalContent === '')) {
-                        e.preventDefault();
-                        if (totalContent === '') {
-                           const div = document.createElement('div');
-                           div.innerHTML = '<br>';
-                           quoteNode.parentNode?.replaceChild(div, quoteNode);
-                           const newRange = document.createRange();
-                           newRange.setStart(div, 0);
-                           newRange.collapse(true);
-                           selection.removeAllRanges();
-                           selection.addRange(newRange);
-                        } else {
-                           document.execCommand('formatBlock', false, 'div');
+                      let isAtStart = false;
+                      try {
+                        rangeToStart.setStart(quoteNode, 0);
+                        rangeToStart.setEnd(range.startContainer, range.startOffset);
+                        const textBefore = rangeToStart.toString().replace(/[\u200B\s]/g, '');
+                        if (textBefore.length === 0) {
+                          isAtStart = true;
                         }
+                      } catch (err) {
+                        isAtStart = true;
+                      }
+
+                      if (isAtStart) {
+                        e.preventDefault();
+                        
+                        // Use native browser formatBlock to untoggle blockquote beautifully and safely
+                        document.execCommand('formatBlock', false, 'div');
+                        
+                        handleInput();
                         setTimeout(updateActiveFormats, 0);
                         return;
                       }
@@ -1311,6 +1409,46 @@ export default function MainApp() {
         </section>
 
         <section className="flex flex-col gap-3 mt-4 items-center">
+          {/* Responsibility Protocol Checkmarks */}
+          <div className="w-full bg-[#1a1a1a] border border-[#333] p-5 rounded-sm flex flex-col gap-4 mb-2">
+            <span className="text-[10px] font-black tracking-[0.2em] text-[#b89e7a] uppercase pb-1 border-b border-white/5">Responsibility Protocol</span>
+            <div className="flex flex-col gap-3">
+              <label className="flex items-start gap-3 cursor-pointer group">
+                <div className="mt-0.5 relative w-4 h-4 shrink-0">
+                  <input 
+                    type="checkbox" 
+                    checked={agreedToRules} 
+                    onChange={e => setAgreedToRules(e.target.checked)}
+                    className="peer appearance-none w-4 h-4 rounded-none bg-black border border-[#b89e7a]/50 checked:bg-[#b89e7a] focus:ring-0 transition-all cursor-pointer absolute inset-0"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 peer-checked:opacity-100 pointer-events-none text-black">
+                    <Check size={10} strokeWidth={4} />
+                  </div>
+                </div>
+                <span className="text-[10px] text-white/50 group-hover:text-white/80 transition-colors uppercase tracking-wider font-bold">
+                  I agree to use this service responsibly, follow the rules, and avoid any harassment.
+                </span>
+              </label>
+
+              <label className="flex items-start gap-3 cursor-pointer group">
+                <div className="mt-0.5 relative w-4 h-4 shrink-0">
+                  <input 
+                    type="checkbox" 
+                    checked={understoodResponsibility} 
+                    onChange={e => setUnderstoodResponsibility(e.target.checked)}
+                    className="peer appearance-none w-4 h-4 rounded-none bg-black border border-[#b89e7a]/50 checked:bg-[#b89e7a] focus:ring-0 transition-all cursor-pointer absolute inset-0"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 peer-checked:opacity-100 pointer-events-none text-black">
+                    <Check size={10} strokeWidth={4} />
+                  </div>
+                </div>
+                <span className="text-[10px] text-white/50 group-hover:text-white/80 transition-colors uppercase tracking-wider font-bold">
+                  I understand this is anonymous, but I am responsible for what I send.
+                </span>
+              </label>
+            </div>
+          </div>
+
           <div className="w-full grid grid-cols-1 gap-3">
             <button 
               onClick={handleSaveDraft}
@@ -1322,9 +1460,9 @@ export default function MainApp() {
             <button 
               ref={sendButtonRef} 
               onClick={() => handleSend('link')} 
-              disabled={isSending || charCount > CHAR_LIMIT || !!nextAvailableTime} 
+              disabled={isSending || charCount > CHAR_LIMIT || !!nextAvailableTime || !agreedToRules || !understoodResponsibility} 
               className={`w-full font-black py-5 uppercase tracking-[0.3em] text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-3 relative overflow-hidden rounded-sm
-                ${!!nextAvailableTime 
+                ${(!!nextAvailableTime || !agreedToRules || !understoodResponsibility)
                   ? 'bg-[#333] text-white/20 cursor-not-allowed opacity-50' 
                   : 'bg-[#b89e7a] text-[#0d0d0d] hover:bg-[#c9bda4] shadow-xl'
                 }
@@ -1338,22 +1476,33 @@ export default function MainApp() {
               ) : !!nextAvailableTime ? "LIMIT REACHED" : "SEND TEXT ANONYMOUSLY"}
             </button>
           </div>
+
+          <AnimatePresence>
+            {status.type && (
+              <motion.div 
+                key={`status-message-${status.type}`} 
+                initial={{ opacity: 0, y: 10 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                exit={{ opacity: 0, y: 10 }} 
+                className={`w-full p-4 text-[11px] uppercase tracking-[0.11em] font-black flex items-center gap-3 rounded-sm border-none mt-1 ${
+                  status.type === 'success' 
+                    ? (status.message.toLowerCase().includes('draft') ? 'bg-[#d4a843] text-black' : 'bg-[#4caf50] text-black') 
+                    : 'bg-[#ff4d4d] text-black'
+                }`}
+              >
+                {status.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                <span className="flex-1 leading-tight">{status.message}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
           
           {nextAvailableTime && (
-            <div className="flex items-center gap-2 text-[#b89e7a]/40 font-bold text-[9px] uppercase tracking-[0.2em] animate-pulse">
+            <div className="flex items-center gap-2 text-[#b89e7a]/40 font-bold text-[9px] uppercase tracking-[0.2em] animate-pulse mt-1">
               <span className="w-1.5 h-1.5 bg-[#b89e7a]/20 rounded-full" />
               Next dispatch available in: {nextAvailableTime}
             </div>
           )}
         </section>
-          <AnimatePresence>
-            {status.type && (
-              <motion.div key={`status-message-${status.type}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className={`p-4 border text-[11px] uppercase tracking-[0.1em] font-bold flex items-center gap-3 ${status.type === 'success' ? 'bg-green-500/5 text-green-400 border-green-500/20' : 'bg-red-500/5 text-red-400 border-red-500/20'}`}>
-                {status.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-                {status.message}
-              </motion.div>
-            )}
-          </AnimatePresence>
       </main>
 
       {/* Sent Logs Modal */}
@@ -1365,7 +1514,12 @@ export default function MainApp() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md"
-            onClick={() => {
+            onClick={(e) => {
+              if (e.target !== e.currentTarget) return;
+              if (Date.now() - lastDeleteTimeRef.current < 1200 || Date.now() - dragTimestampRef.current < 1200) {
+                // Ignore backdrop click if we just had a deletion or drag event to prevent modal closing on drag-release / fall-through
+                return;
+              }
               try {
                 setShowLogs(false); 
                 setActiveLogThread(null);
@@ -1380,6 +1534,9 @@ export default function MainApp() {
               exit={{ scale: 0.95, opacity: 0 }}
               className={`w-full ${activeLogThread ? 'max-w-2xl' : 'max-w-lg'} bg-[#0a0a0a] border border-white/10 px-0 sm:px-5 py-8 flex flex-col gap-6 max-h-[90vh] overflow-hidden relative transition-all duration-300 rounded-[24px] shadow-[#d4a84310]/30 shadow-2xl box-border mx-auto`}
               onClick={e => e.stopPropagation()}
+              onMouseDown={e => e.stopPropagation()}
+              onPointerDown={e => e.stopPropagation()}
+              onTouchStart={e => e.stopPropagation()}
             >
               <div className="flex justify-between items-center border-b border-white/5 pb-6 px-5 sm:px-8">
                 <div className="flex items-center gap-4">
@@ -1407,7 +1564,7 @@ export default function MainApp() {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar py-8 relative">
+              <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar pt-0 pb-8 relative">
                 {!activeLogThread ? (
                   // List View
                   <>
@@ -1416,7 +1573,7 @@ export default function MainApp() {
                         <button 
                           key={`filter-${f}`}
                           onClick={() => setActiveFilter(f as any)}
-                          className={`text-[8px] font-black uppercase tracking-[0.2em] px-4 py-2 transition-all border shrink-0 rounded-lg ${activeFilter === f ? 'bg-[#b89e7a] text-black border-[#b89e7a] shadow-lg shadow-[#b89e7a]/20' : 'text-white/40 border-white/10 hover:border-white/30 hover:text-white/60 bg-white/5'}`}
+                          className={`text-[8px] font-black uppercase tracking-[0.2em] px-4 py-2 transition-all border shrink-0 rounded-lg shadow-none outline-none focus:outline-none ${activeFilter === f ? 'bg-[#b89e7a] text-black border-[#b89e7a]' : 'text-white/40 border-white/10 hover:border-white/30 hover:text-white/60 bg-white/5'}`}
                         >
                           {f}
                         </button>
@@ -1439,7 +1596,8 @@ export default function MainApp() {
                             {filteredLogs.map((log, idx) => (
                               <div key={`log-container-${log.id || log.noteId || idx}`} className="relative overflow-hidden">
                                 {/* Delete Background Indicator */}
-                                <div className="absolute inset-0 bg-red-900/40 flex items-center justify-end px-6 rounded-sm">
+                                <div className="absolute inset-0 bg-red-900/40 flex items-center justify-between px-6 rounded-sm">
+                                  <span className="text-[8px] font-black text-red-400 uppercase tracking-widest">Delete</span>
                                   <span className="text-[8px] font-black text-red-400 uppercase tracking-widest">Delete</span>
                                 </div>
                                 
@@ -1447,15 +1605,28 @@ export default function MainApp() {
                                   key={`archived-log-${log.id || log.noteId || `idx-${idx}`}`}
                                   drag="x"
                                   dragDirectionLock
-                                  dragConstraints={{ left: -120, right: 0 }}
+                                  dragConstraints={{ left: -120, right: 120 }}
+                                  dragSnapToOrigin={true}
                                   dragElastic={0.1}
-                                  onDragEnd={(_, info) => {
-                                    if (info.offset.x < -80) {
+                                  onDragStart={() => {
+                                    dragTimestampRef.current = Date.now();
+                                  }}
+                                  onDrag={() => {
+                                    dragTimestampRef.current = Date.now();
+                                  }}
+                                  onDragEnd={(e, info) => {
+                                    dragTimestampRef.current = Date.now();
+                                    if (info.offset.x < -80 || info.offset.x > 80) {
+                                      e?.stopPropagation();
                                       handleDeleteLog(log.id || log.noteId || "");
                                     }
                                   }}
-                                  onClick={async () => {
-                                  try {
+                                  onTap={async (e) => {
+                                    e?.stopPropagation();
+                                    if (Date.now() - dragTimestampRef.current < 800) {
+                                      return;
+                                    }
+                                    try {
                                     if (log.isDraft) {
                                       loadDraft(log);
                                       return;
@@ -1709,7 +1880,7 @@ export default function MainApp() {
                 {!activeLogThread && (
                   <div className="flex items-center gap-1.5 text-red-500/60 font-black uppercase tracking-[0.15em] text-[7px] mb-1">
                     <Info size={10} className="stroke-[3]" />
-                    Swipe left to delete logs
+                    Swipe left/right to delete logs
                   </div>
                 )}
                 <p className="text-[8px] uppercase tracking-[0.3em] font-bold text-white/20">Archived on local memory</p>
@@ -1746,7 +1917,6 @@ export default function MainApp() {
       <footer className="py-12 mt-auto flex flex-col items-center gap-6 border-t border-white/5 opacity-40">
           <div className="flex flex-col items-center gap-2">
             <p className="text-[9px] uppercase tracking-[0.5em] text-[#b89e7a] font-medium text-center px-4 leading-relaxed">
-              ANONYMOUS & SECURE<br />
               NO TRACE • NO IDENTITY • NO SIGN
             </p>
             <p className="text-[8px] uppercase tracking-[0.2em] text-white/30 font-mono">Confidential Service &copy; 2026</p>

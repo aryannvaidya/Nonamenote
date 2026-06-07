@@ -77,15 +77,6 @@ export default async function handler(req, res) {
     </tr>
     </tbody>
     </table>
-    <table style="margin-top: 30px;" border="0" width="100%" cellspacing="0" cellpadding="0">
-    <tbody>
-    <tr>
-    <td align="center">
-    <p style="margin: 0; font-family: 'Courier New', Courier, monospace; font-size: 11px; color: #a6a6a6; text-transform: uppercase; letter-spacing: 1.5px;">Sender is Anonymous</p>
-    </td>
-    </tr>
-    </tbody>
-    </table>
     <table style="margin-top: 20px; table-layout: fixed;" border="0" width="100%" cellspacing="0" cellpadding="0">
     <tbody>
     <tr>
@@ -121,7 +112,7 @@ export default async function handler(req, res) {
           email: 'noreply@nonamenote.fun'
         },
         to: [{ email: to_email }],
-        subject: '🕊️ Someone sent you a secret note',
+        subject: 'SOMEONE SENT YOU A NOTE',
         htmlContent: getEmailTemplate(note_link)
       })
     });
