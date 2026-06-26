@@ -112,7 +112,7 @@ export default async function handler(req, res) {
           email: 'noreply@nonamenote.fun'
         },
         to: [{ email: to_email }],
-        subject: 'SOMEONE SENT YOU A NOTE',
+        subject: 'Someone sent you a note',
         htmlContent: getEmailTemplate(note_link)
       })
     });
