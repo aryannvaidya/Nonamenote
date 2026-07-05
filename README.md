@@ -1,5 +1,3 @@
-NoNameNote Readme
-
 # NoNameNote 📩
 
 > Send anonymous notes to anyone. No account needed on their end.
